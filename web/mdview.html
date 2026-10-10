@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MD 预览</title>
+<!--
+  内嵌 Markdown 预览（agent-sync 面板附属页）
+  用法：/mdview?path=D:\xxx\PRD.md
+  渲染内核与 md-viewer（D:\md-viewer\dist\index.html）同源，改渲染逻辑请两边同步。
+-->
+<style>
+:root {
+  --paper: #fffdf8;
+  --paper-head: #f9f5ec;
+  --line: #e6dece;
+  --ink: #23201b;
+  --muted: #8a8275;
+  --accent: #e0523a;
+  --md-text: #2d2a25;
+  --md-head: #1b1915;
+  --md-h56: #4a463e;
+  --md-strong: #1c1a16;
+  --md-strong-soft: rgba(224, 82, 58, .2);
+  --md-del: #9b9386;
+  --md-link: #c1402a;
+  --md-code-text: #b33c26;
+  --md-code-bg: #f4ede1;
+  --md-code-border: #ebe1cf;
+  --md-pre-bg: #1b1d22;
+  --md-pre-text: #e2e5ea;
+  --md-pre-line: rgba(255, 255, 255, .04);
+  --md-pre-lang: #6f7683;
+  --md-quote-bg: #f7f0e4;
+  --md-quote-text: #5d574d;
+  --md-hr: #d6ccba;
+  --md-empty: #a69e90;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: "JetBrains Mono", Consolas, "Cascadia Mono", "Noto Sans Mono CJK SC", "Microsoft YaHei", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font-family: var(--sans); }
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 16px;
+  background: var(--paper-head);
+  border-bottom: 1px solid var(--line);
+}
+.title { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.title b { font-size: 13.5px; white-space: nowrap; }
+.title small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: #e4f1e5;
+  color: #2f7c4c;
+  font-size: 11.5px;
+  font-weight: 650;
+}
+.live i { width: 6px; height: 6px; border-radius: 50%; background: #2f9e5a; }
+.live.pulse i { animation: blink .9s ease-out; }
+@keyframes blink { 0% { box-shadow: 0 0 0 0 rgba(47,158,90,.55); } 100% { box-shadow: 0 0 0 7px rgba(47,158,90,0); } }
+.btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid #d8cfbf;
+  background: rgba(255,255,255,.62);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+}
+.btn:hover { background: #fff; border-color: #c9bda8; }
+.scroll { flex: 1; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #d7cebe transparent; }
+.wrap { max-width: 860px; margin: 0 auto; }
+.empty { margin-top: 18vh; text-align: center; color: var(--muted); line-height: 2; font-size: 14px; }
+
+.md {
+  padding: 26px 40px 56px;
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--md-text);
+  overflow-wrap: break-word;
+}
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { margin: 1.7em 0 .65em; color: var(--md-head); line-height: 1.35; font-weight: 750; }
+.md h1 { font-size: 2em; margin-bottom: .8em; padding-bottom: .5em; border-bottom: 1px solid var(--line); }
+.md h2 { font-size: 1.36em; }
+.md h2::before {
+  content: ""; display: inline-block; width: .36em; height: .36em;
+  margin: 0 .6em .16em .08em; border-radius: 1.5px; background: var(--accent);
+  transform: rotate(45deg); vertical-align: middle;
+}
+.md h1::before {
+  content: ""; display: inline-block; width: 26px; height: 4px;
+  margin: 0 .5em .14em 0; border-radius: 4px; background: var(--accent); vertical-align: middle;
+}
+.md h3 { font-size: 1.14em; }
+.md h4 { font-size: 1.02em; }
+.md h5, .md h6 { font-size: .95em; color: var(--md-h56); }
+.md p { margin: .85em 0; }
+.md strong { font-weight: 700; color: var(--md-strong); background: linear-gradient(transparent 62%, var(--md-strong-soft) 62%); }
+.md :is(h1,h2,h3,h4,h5,h6) strong { background: none; }
+.md em { font-style: italic; }
+.md del { color: var(--md-del); }
+.md a { color: var(--md-link); text-decoration: underline; text-decoration-color: rgba(193,64,42,.35); text-underline-offset: 3px; cursor: pointer; }
+.md a:hover { text-decoration-color: currentColor; }
+.md code { font-family: var(--mono); font-size: .86em; padding: .12em .42em; border-radius: 6px; border: 1px solid var(--md-code-border); background: var(--md-code-bg); color: var(--md-code-text); }
+.md pre { position: relative; margin: 1.2em 0; padding: 18px 20px; border-radius: 12px; background: var(--md-pre-bg); color: var(--md-pre-text); font-size: .86em; line-height: 1.65; overflow-x: auto; box-shadow: inset 0 0 0 1px var(--md-pre-line); }
+.md pre code { padding: 0; border: 0; background: none; color: inherit; font-size: inherit; white-space: pre; font-family: var(--mono); }
+.md pre[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font: 650 10.5px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--md-pre-lang); }
+.md ul, .md ol { margin: .7em 0; padding-left: 1.5em; }
+.md li { margin: .32em 0; padding-left: .2em; }
+.md li::marker { color: var(--accent); }
+.md li.task { list-style: none; margin-left: -1.15em; }
+.md input[type="checkbox"] { width: 15px; height: 15px; margin-right: .5em; vertical-align: -2px; accent-color: var(--accent); }
+.md blockquote { margin: 1.1em 0; padding: .75em 1.1em; border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0; background: var(--md-quote-bg); color: var(--md-quote-text); }
+.md blockquote > :first-child { margin-top: 0; }
+.md blockquote > :last-child { margin-bottom: 0; }
+.md table { display: block; width: 100%; margin: 1.1em 0; border-collapse: collapse; font-size: .92em; line-height: 1.6; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--md-code-border); padding: .5em .85em; text-align: left; vertical-align: top; }
+.md thead th { background: var(--md-code-bg); color: var(--md-head); font-weight: 700; white-space: nowrap; }
+.md tbody tr:nth-child(even) { background: var(--md-quote-bg); }
+.md img { display: block; max-width: 100%; margin: 1em auto; border-radius: 10px; }
+.md hr { height: 1px; margin: 2.2em 0; border: 0; background: repeating-linear-gradient(90deg, var(--md-hr) 0 6px, transparent 6px 12px); }
+.md sup.fn-ref { font-size: .75em; }
+.md sup.fn-ref a { color: var(--md-link); text-decoration: none; font-weight: 650; padding: 0 2px; }
+.md .footnotes { margin-top: 2.2em; font-size: .9em; color: var(--md-quote-text); }
+.md .frontmatter { margin: 0 0 1.5em; padding: 12px 16px; border-radius: 10px; background: var(--md-code-bg); border: 1px solid var(--md-code-border); border-left: 3px solid var(--accent); color: var(--md-quote-text); font: 500 12.5px/1.75 var(--mono); white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="title">
+    <b id="fname">未加载</b>
+    <small id="fmeta"></small>
+    <span class="live" id="live"><i></i>监听中</span>
+  </div>
+  <button class="btn" id="openBtn" title="用 MD 阅览打开独立窗口">⤢ 在外部打开</button>
+</div>
+<div class="scroll" id="scroll"><div class="wrap"><article class="md" id="md"><p class="empty">未指定文件<br>用法：/mdview?path=D:\xxx\文档.md</p></article></div></div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ===== 渲染内核（与 md-viewer dist/index.html 同源） ===== */
+
+  const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  const esc = (s) => s.replace(/[&<>"']/g, (c) => ESC_MAP[c]);
+  const ESCAPABLE = /[!-\/:-@\[-`{-~]/;
+
+  const RE_BLANK = /^[ \t]*$/;
+  const RE_HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
+  const RE_HR = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+  const RE_ITEM = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+)(.*)$/;
+  const RE_QUOTE = /^( {0,3}>)([ \t]?)(.*)$/;
+  const RE_FENCE = /^( {0,3})(`{3,}|~{3,})(.*)$/;
+  const RE_FENCE_END = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
+  const RE_LINK = /\[([^\[\]\n]+)\]\(\s*([^\s()]*(?:\([^\s()]*\)[^\s()]*)*)(?:\s+&quot;([^\n]*?)&quot;)?\s*\)/g;
+  const RE_IMG = /!\[([^\[\]\n]*)\]\(\s*([^\s()]*(?:\([^\s()]*\)[^\s()]*)*)(?:\s+&quot;([^\n]*?)&quot;)?\s*\)/g;
+
+  const EMPHASIS = [
+    { re: /()\*\*\*(?=\S)([\s\S]*?\S)\*\*\*/g, open: '<strong><em>', close: '</em></strong>' },
+    { re: /()\*\*(?=\S)([\s\S]*?\S)\*\*/g, open: '<strong>', close: '</strong>' },
+    { re: /(^|[^\w])__(?=\S)([\s\S]*?\S)__(?!\w)/g, open: '<strong>', close: '</strong>' },
+    { re: /()~~(?=\S)([\s\S]*?\S)~~/g, open: '<del>', close: '</del>' },
+    { re: /()\*(?=[^\s*])([^*]*?[^\s*])\*/g, open: '<em>', close: '</em>' },
+    { re: /(^|[^\w])_(?=[^\s_])([^_]*?[^\s_])_(?!\w)/g, open: '<em>', close: '</em>' },
+  ];
+
+  const indentWidth = (s) => {
+    let w = 0;
+    for (const c of s) w += c === '\t' ? 4 - (w % 4) : 1;
+    return w;
+  };
+  const fenceOpen = (line) => {
+    const m = RE_FENCE.exec(line);
+    if (!m) return null;
+    const info = m[3].trim();
+    if (m[2][0] === '`' && info.includes('`')) return null;
+    return { ch: m[2][0], len: m[2].length, lang: info.split(/\s+/)[0] };
+  };
+  const fenceClose = (line, f) => {
+    const m = RE_FENCE_END.exec(line);
+    return !!m && m[1][0] === f.ch && m[1].length >= f.len;
+  };
+  const scanTicks = (t, i) => {
+    let j = i;
+    while (t[j] === '`') j++;
+    const run = j - i;
+    for (let k = t.indexOf('`', j); k !== -1;) {
+      let e = k;
+      while (t[e] === '`') e++;
+      if (e - k === run) return { open: j, close: k, end: e };
+      k = t.indexOf('`', e);
+    }
+    return { open: j, close: -1, end: j };
+  };
+  const restore = (s, frags) => s.replace(/\u0001(\d+)\u0002/g, (_, k) => frags[k]);
+
+  const isSepRow = (ln) => {
+    const s = ln.trim();
+    if (!s.includes('|')) return false;
+    const body = s.replace(/^\|/, '').replace(/\|$/, '').trim();
+    if (!body) return false;
+    return body.split('|').every((c) => /^\s*:?-+:?\s*$/.test(c));
+  };
+
+  // md 内引用目标 → 绝对路径（当前文件所在目录为基准）
+  function normWinPath(p) {
+    const segs = p.split(/[\\/]/).filter((s) => s !== '' && s !== '.');
+    const out = [];
+    for (const s of segs) {
+      if (s === '..') { if (out.length && !/^[a-zA-Z]:$/.test(out[out.length - 1])) out.pop(); }
+      else out.push(s);
+    }
+    return out.join('\\');
+  }
+  function absPath(href) {
+    let h = href.replace(/^<|>$/g, '');
+    if (/^[a-zA-Z]:[\\/]/.test(h)) return normWinPath(h);
+    if (/%[0-9a-f]{2}/i.test(h)) { try { h = decodeURIComponent(h); } catch { /* 保留 */ } }
+    const dir = state.path.slice(0, Math.max(state.path.lastIndexOf('\\'), state.path.lastIndexOf('/')));
+    return normWinPath(dir + '\\' + h);
+  }
+  const assetUrl = (href) => '/api/mdasset?path=' + encodeURIComponent(absPath(href));
+
+  function inline(text) {
+    const frags = [];
+    const hold = (h) => '\u0001' + (frags.push(h) - 1) + '\u0002';
+    let s = '';
+    for (let i = 0; i < text.length;) {
+      const c = text[i];
+      if (c === '\u0001' || c === '\u0002') { i++; continue; }
+      if (c === '\\' && i + 1 < text.length && ESCAPABLE.test(text[i + 1])) { s += hold(esc(text[i + 1])); i += 2; continue; }
+      if (c === '`') {
+        const r = scanTicks(text, i);
+        if (r.close < 0) { s += text.slice(i, r.end); i = r.end; continue; }
+        let code = text.slice(r.open, r.close).replace(/\n/g, ' ');
+        if (code.length > 2 && code[0] === ' ' && code[code.length - 1] === ' ' && code.trim()) code = code.slice(1, -1);
+        s += hold('<code>' + esc(code) + '</code>');
+        i = r.end;
+        continue;
+      }
+      s += c;
+      i++;
+    }
+    s = esc(s);
+    s = s.replace(/\[\^([^\]\s]+)\]/g, (m, label) => {
+      const fn = footnotes.get(label);
+      if (!fn) return m;
+      return hold('<sup class="fn-ref"><a href="#fn-' + esc(label) + '">' + fn.num + '</a></sup>');
+    });
+    s = s.replace(RE_IMG, (m, alt, url, title) => {
+      const resolved = assetUrl(restore(url, frags));
+      if (!resolved) return m;
+      const tip = title ? ' title="' + restore(title, frags).replace(/<[^>]*>/g, '') + '"' : '';
+      return hold('<img src="' + esc(resolved) + '" alt="' + restore(alt, frags) + '"' + tip + ' loading="lazy">');
+    });
+    s = s.replace(RE_LINK, (m, label, url, title) => {
+      const href = restore(url, frags);
+      const tip = title ? ' title="' + restore(title, frags).replace(/<[^>]*>/g, '') + '"' : '';
+      return hold('<a href="' + href + '"' + tip + '>') + label + hold('</a>');
+    });
+    s = s.replace(/&lt;(https?:\/\/[^\s]+?)&gt;/g, (m, url) => hold('<a href="' + url + '">' + url + '</a>'));
+    s = s.replace(/(^|[\s(])((?:https?:\/\/|www\.)[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/g, (m, pre, url) => {
+      let trail = '';
+      while (/[.,;:!?)]$/.test(url)) { trail = url.slice(-1) + trail; url = url.slice(0, -1); }
+      const href = /^www\./i.test(url) ? 'https://' + url : url;
+      return hold(pre + '<a href="' + href + '">' + url + '</a>') + trail;
+    });
+    for (const r of EMPHASIS) s = s.replace(r.re, (m, pre, body) => pre + r.open + body + r.close);
+    return restore(s.replace(/\n/g, '<br>'), frags);
+  }
+
+  function renderList(lines, start, base, map) {
+    const items = [];
+    const n = lines.length;
+    let i = start;
+    while (i < n) {
+      const line = lines[i];
+      const m = RE_ITEM.exec(line);
+      if (m && !RE_HR.test(line)) {
+        items.push({ indent: indentWidth(m[1]), ordered: /\d/.test(m[2]), num: parseInt(m[2], 10), text: [m[4]], line: i, end: i });
+        i++;
+        continue;
+      }
+      if (RE_BLANK.test(line)) {
+        let j = i + 1;
+        while (j < n && RE_BLANK.test(lines[j])) j++;
+        if (j < n && RE_ITEM.test(lines[j]) && !RE_HR.test(lines[j])) { i = j; continue; }
+        break;
+      }
+      if (fenceOpen(line) || RE_HEADING.test(line) || RE_HR.test(line) || RE_QUOTE.test(line)) break;
+      items[items.length - 1].text.push(line.trim());
+      items[items.length - 1].end = i;
+      i++;
+    }
+    let html = '';
+    const stack = [];
+    for (const it of items) {
+      const tag = it.ordered ? 'ol' : 'ul';
+      while (stack.length && it.indent < stack[stack.length - 1].indent) html += '</li></' + stack.pop().tag + '>';
+      const top = stack[stack.length - 1];
+      const open = () => {
+        html += '<' + tag + (it.ordered && it.num !== 1 ? ' start="' + it.num + '"' : '') + '>';
+        stack.push({ indent: it.indent, tag });
+      };
+      if (!top || it.indent >= top.indent + 2) open();
+      else if (top.tag !== tag) { html += '</li></' + stack.pop().tag + '>'; open(); }
+      else html += '</li>';
+      let liClass = '';
+      let taskHtml = '';
+      let content = it.text.join('\n');
+      const tmk = /^\[([ xX])\] /.exec(content);
+      if (tmk) {
+        liClass = ' class="task"';
+        taskHtml = '<input type="checkbox" disabled' + (tmk[1] !== ' ' ? ' checked' : '') + '>';
+        content = content.slice(tmk[0].length);
+      }
+      html += '<li' + liClass + (map ? ' data-line="' + (base + it.line) + '"' : '') + '>' + taskHtml + inline(content);
+    }
+    while (stack.length) html += '</li></' + stack.pop().tag + '>';
+    return { html, next: i };
+  }
+
+  function renderBlocks(lines, base, map) {
+    const n = lines.length;
+    let html = '';
+    let para = -1;
+    let i = 0;
+    const flush = (end) => {
+      if (para < 0) return;
+      html += '<p>' + inline(lines.slice(para, end).map((l) => l.trim()).join('\n')) + '</p>';
+      para = -1;
+    };
+    while (i < n) {
+      const line = lines[i];
+      if (RE_BLANK.test(line)) { flush(i); i++; continue; }
+      const f = fenceOpen(line);
+      if (f) {
+        flush(i);
+        let j = i + 1;
+        while (j < n && !fenceClose(lines[j], f)) j++;
+        const lang = f.lang ? esc(f.lang) : '';
+        html += '<pre' + (lang ? ' data-lang="' + lang + '"' : '') + '><code>' + esc(lines.slice(i + 1, j).join('\n')) + '</code></pre>';
+        i = j + 1;
+        continue;
+      }
+      let m = RE_HEADING.exec(line);
+      if (m) {
+        flush(i);
+        const lv = m[1].length;
+        html += '<h' + lv + ' id="h-' + base + '-' + i + '">' + inline(m[2] || '') + '</h' + lv + '>';
+        i++;
+        continue;
+      }
+      if (RE_HR.test(line)) { flush(i); html += '<hr>'; i++; continue; }
+      if (line.includes('|') && i + 1 < n && !isSepRow(line) && isSepRow(lines[i + 1])) {
+        flush(i);
+        const splitRow = (ln) => {
+          let s = ln.trim();
+          if (s.startsWith('|')) s = s.slice(1);
+          if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
+          const cells = [];
+          let cur = '';
+          for (let k = 0; k < s.length; k++) {
+            if (s[k] === '\\' && s[k + 1] === '|') { cur += '|'; k++; continue; }
+            if (s[k] === '|') { cells.push(cur.trim()); cur = ''; continue; }
+            cur += s[k];
+          }
+          cells.push(cur.trim());
+          return cells;
+        };
+        const alignOf = (c) => {
+          const l = c.startsWith(':'), r = c.endsWith(':');
+          return l && r ? ' style="text-align:center"' : r ? ' style="text-align:right"' : '';
+        };
+        const aligns = splitRow(lines[i + 1]).map(alignOf);
+        let t = '<table><thead><tr>' +
+          splitRow(line).map((c, k) => '<th' + (aligns[k] || '') + '>' + inline(c) + '</th>').join('') +
+          '</tr></thead><tbody>';
+        let j = i + 2;
+        while (j < n && !RE_BLANK.test(lines[j]) && lines[j].includes('|') && !isSepRow(lines[j])) {
+          t += '<tr>' + splitRow(lines[j]).map((c, k) => '<td' + (aligns[k] || '') + '>' + inline(c) + '</td>').join('') + '</tr>';
+          j++;
+        }
+        html += t + '</tbody></table>';
+        i = j;
+        continue;
+      }
+      if (RE_QUOTE.test(line)) {
+        flush(i);
+        const inner = [];
+        let j = i;
+        while (j < n && (m = RE_QUOTE.exec(lines[j]))) { inner.push(m[3]); j++; }
+        html += '<blockquote>' + renderBlocks(inner, base + i, map) + '</blockquote>';
+        i = j;
+        continue;
+      }
+      if (RE_ITEM.test(line)) {
+        flush(i);
+        const r = renderList(lines, i, base, map);
+        html += r.html;
+        i = r.next;
+        continue;
+      }
+      {
+        const fnd = /^\[\^([^\]\s]+)\]:/.exec(line.trimStart());
+        if (fnd && footnotes.has(fnd[1])) {
+          flush(i);
+          i++;
+          while (i < n && !RE_BLANK.test(lines[i]) && /^\s{1,3}\S/.test(lines[i]) && !RE_ITEM.test(lines[i])) i++;
+          continue;
+        }
+      }
+      if (para < 0) para = i;
+      i++;
+    }
+    flush(n);
+    return html;
+  }
+
+  const RE_FN_DEF = /^ {0,3}\[\^([^\]\s]+)\]:\s*(.*)$/;
+  let footnotes = new Map();
+
+  function renderMarkdown(text) {
+    const all = text.replace(/\r\n?/g, '\n').split('\n');
+    footnotes = new Map();
+    let num = 0;
+    for (let k = 0; k < all.length; k++) {
+      const fm = RE_FN_DEF.exec(all[k]);
+      if (!fm) continue;
+      const parts = [fm[2]];
+      let j = k + 1;
+      while (j < all.length && !RE_BLANK.test(all[j]) && /^\s{1,3}\S/.test(all[j]) && !RE_ITEM.test(all[j])) {
+        parts.push(all[j].trim());
+        k = j++;
+      }
+      footnotes.set(fm[1], { num: ++num, text: parts.join('\n') });
+    }
+    let head = '';
+    let body = all;
+    if (all[0] && all[0].trim() === '---') {
+      let end = -1;
+      for (let k = 1; k < all.length; k++) {
+        if (all[k].trim() === '---' || all[k].trim() === '...') { end = k; break; }
+      }
+      if (end > 0) {
+        head = '<div class="frontmatter">' + esc(all.slice(1, end).join('\n')) + '</div>';
+        body = all.slice(end + 1);
+      }
+    }
+    let html = head + renderBlocks(body, 0, true);
+    if (footnotes.size) {
+      html += '<section class="footnotes"><hr><ol>';
+      for (const [label, fn] of footnotes) html += '<li id="fn-' + esc(label) + '">' + inline(fn.text) + '</li>';
+      html += '</ol></section>';
+    }
+    return html;
+  }
+
+  /* ===== 页面逻辑 ===== */
+
+  const $ = (id) => document.getElementById(id);
+  const state = { path: null, mtime: 0 };
+
+  async function load() {
+    if (!state.path) return;
+    try {
+      const r = await fetch('/api/md?path=' + encodeURIComponent(state.path));
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || '读取失败');
+      const atTop = $('scroll').scrollTop < 8;
+      $('md').innerHTML = renderMarkdown(j.content);
+      $('fname').textContent = j.name;
+      $('fmeta').textContent = state.path + ' · ' + new Date(j.mtime).toLocaleTimeString('sv-SE').slice(0, 5) + ' 更新';
+      state.mtime = j.mtime;
+      if (atTop) $('scroll').scrollTop = 0;
+      const live = $('live');
+      live.classList.remove('pulse');
+      void live.offsetWidth;
+      live.classList.add('pulse');
+    } catch (e) {
+      $('md').innerHTML = '<p class="empty">读取失败<br>' + esc(String(e.message || e)) + '</p>';
+    }
+  }
+
+  const params = new URLSearchParams(location.search);
+  const p = params.get('path');
+  if (p && /\.(md|markdown)$/i.test(p)) {
+    state.path = p;
+    load();
+    setInterval(async () => {
+      if (!state.path) return;
+      try {
+        const r = await fetch('/api/mdstat?path=' + encodeURIComponent(state.path));
+        const j = await r.json();
+        if (j.ok && j.mtime !== state.mtime) load();
+      } catch { /* 文件暂不可读，下轮再试 */ }
+    }, 2000);
+  }
+
+  $('openBtn').addEventListener('click', () => {
+    if (state.path) fetch('/api/openmd?path=' + encodeURIComponent(state.path));
+  });
+
+  $('md').addEventListener('click', (e) => {
+    const a = e.target.closest('a');
+    if (!a) return;
+    e.preventDefault();
+    const href = a.getAttribute('href');
+    if (!href) return;
+    if (href.startsWith('#')) {
+      const el = $('md').querySelector('#' + CSS.escape(href.slice(1)));
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (/^https?:/i.test(href)) { window.open(href, '_blank', 'noopener'); return; }
+    if (state.path) location.href = '/mdview?path=' + encodeURIComponent(absPath(href));
+  });
+})();
+</script>
+</body>
+</html>

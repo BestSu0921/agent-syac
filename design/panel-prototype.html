@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AGENT-SYNC · 同步控制台</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('as-theme')||'dark'}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   AGENT-SYNC 同步控制台 · 高保真原型（假数据）
+   视觉方向：碳黑工业仪表盘 / 琥珀磷光 / 工程网格底纹
+   布局血统：Uptime Kuma 卡片式状态仪表 + 自创「源辐射拓扑总线」
+   ============================================================ */
+:root {
+  --bg0: #0b0c0e;
+  --bg1: #111317;
+  --bg2: #171a1f;
+  --bg3: #1e2228;
+  --line: #272b32;
+  --line2: #343941;
+  --amber: #ffb224;
+  --amber-dim: #8a6420;
+  --ok: #3ddc97;
+  --ok-dim: #1d5c42;
+  --err: #ff5d5d;
+  --info: #6ab7ff;
+  --text: #e9e4d8;
+  --dim: #918c7f;
+  --faint: #5d594f;
+  --wire-off: #2a2d33;
+  --mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  --disp: "Chakra Petch", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --body: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scrollbar-color: var(--line2) var(--bg0); }
+body {
+  background: var(--bg0);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+  /* 工程网格底纹 + 顶部琥珀辉光 + 噪点 */
+  background-image:
+    radial-gradient(ellipse 900px 420px at 50% -10%, rgba(255,178,36,.075), transparent 60%),
+    repeating-linear-gradient(0deg, transparent 0 39px, rgba(255,255,255,.018) 39px 40px),
+    repeating-linear-gradient(90deg, transparent 0 39px, rgba(255,255,255,.018) 39px 40px);
+}
+::selection { background: var(--amber); color: #111; }
+
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px 90px; }
+
+/* ---------- 顶栏 ---------- */
+header {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 34px 0 22px;
+  border-bottom: 1px solid var(--line);
+  animation: rise .6s cubic-bezier(.2,.7,.2,1) both;
+}
+.brand { display: flex; align-items: baseline; gap: 14px; }
+.brand h1 {
+  font-family: var(--disp); font-size: 26px; font-weight: 700;
+  letter-spacing: .06em; color: var(--text);
+}
+.brand h1 b { color: var(--amber); font-weight: 700; }
+.brand .sub {
+  font-family: var(--mono); font-size: 11px; color: var(--dim);
+  letter-spacing: .22em; text-transform: uppercase;
+}
+.meta { display: flex; gap: 26px; font-family: var(--mono); font-size: 12px; }
+.meta div { text-align: right; }
+.meta .k { color: var(--faint); font-size: 10px; letter-spacing: .18em; text-transform: uppercase; }
+.meta .v { color: var(--text); margin-top: 2px; }
+.meta .v.amber { color: var(--amber); }
+
+/* ---------- 全局健康条 ---------- */
+.healthbar {
+  display: flex; align-items: center; gap: 22px;
+  margin: 26px 0 30px; padding: 18px 24px;
+  background: linear-gradient(180deg, var(--bg1), var(--bg0));
+  border: 1px solid var(--line); border-left: 3px solid var(--ok);
+  animation: rise .6s .08s cubic-bezier(.2,.7,.2,1) both;
+}
+.healthbar.warn { border-left-color: var(--amber); }
+.pulse { position: relative; width: 11px; height: 11px; border-radius: 50%; background: var(--ok); flex: none; }
+.pulse::after {
+  content: ""; position: absolute; inset: -5px; border-radius: 50%;
+  border: 1px solid var(--ok); opacity: 0; animation: ping 2.2s ease-out infinite;
+}
+.healthbar.warn .pulse { background: var(--amber); }
+.healthbar.warn .pulse::after { border-color: var(--amber); }
+.healthbar .big { font-family: var(--disp); font-size: 17px; font-weight: 600; letter-spacing: .02em; }
+.healthbar .big em { font-style: normal; color: var(--dim); font-family: var(--body); font-size: 13px; margin-left: 10px; }
+.health-stats { margin-left: auto; display: flex; gap: 30px; font-family: var(--mono); font-size: 12px; }
+.health-stats span { color: var(--faint); }
+.health-stats b { color: var(--text); font-weight: 500; }
+.health-stats b.ok { color: var(--ok); }
+.health-stats b.warn { color: var(--amber); }
+
+/* ---------- 拓扑总线（记忆点） ---------- */
+.bus {
+  margin-bottom: 34px; padding: 26px 10px 10px;
+  border: 1px solid var(--line); background: linear-gradient(180deg, rgba(255,178,36,.03), transparent 55%), var(--bg1);
+  position: relative; overflow: hidden;
+  animation: rise .6s .16s cubic-bezier(.2,.7,.2,1) both;
+}
+.bus .tag {
+  position: absolute; top: 12px; left: 16px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .24em;
+  color: var(--faint); text-transform: uppercase;
+}
+.bus svg { display: block; width: 100%; height: 190px; }
+.bus .src-label { font-family: var(--mono); font-size: 12px; fill: var(--text); }
+.bus .src-path { font-family: var(--mono); font-size: 10px; fill: var(--faint); }
+.bus .node-label { font-family: var(--mono); font-size: 11.5px; fill: var(--text); }
+.bus .node-sub { font-family: var(--mono); font-size: 10px; fill: var(--faint); }
+.wire { fill: none; stroke: var(--ok-dim); stroke-width: 1.5; }
+.wire.warn { stroke: var(--amber-dim); }
+.wire.off { stroke: var(--wire-off); stroke-dasharray: 3 5; }
+/* SVG 节点配色走变量，随主题切换 */
+.svg-src { fill: var(--bg2); stroke: var(--amber); }
+.svg-src-strip { fill: var(--amber); }
+.svg-box { fill: var(--bg2); stroke: var(--line); }
+.svg-off { fill: var(--bg1); stroke: var(--line); }
+.s-dot { fill: var(--ok); }
+.s-dot-off { fill: var(--faint); }
+.f-amber { fill: var(--amber); }
+.f-ok { fill: var(--ok); }
+
+/* ---------- 区块标题 ---------- */
+.sec { display: flex; align-items: baseline; gap: 12px; margin: 34px 0 16px; }
+.sec h2 {
+  font-family: var(--disp); font-size: 15px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--text);
+}
+.sec h2 i { font-style: normal; color: var(--amber); margin-right: 8px; font-family: var(--mono); }
+.sec .note { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+
+/* ---------- Agent 卡片网格 ---------- */
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.card {
+  background: linear-gradient(180deg, var(--bg2), var(--bg1));
+  border: 1px solid var(--line); padding: 18px 18px 16px;
+  position: relative; transition: border-color .25s, transform .25s;
+  animation: rise .6s both cubic-bezier(.2,.7,.2,1);
+}
+.card:nth-child(1) { animation-delay: .22s; }
+.card:nth-child(2) { animation-delay: .28s; }
+.card:nth-child(3) { animation-delay: .34s; }
+.card:nth-child(4) { animation-delay: .40s; }
+.card:hover { border-color: var(--line2); transform: translateY(-2px); }
+.card .dot { position: absolute; top: 18px; right: 16px; width: 8px; height: 8px; border-radius: 50%; }
+.dot.ok { background: var(--ok); box-shadow: 0 0 8px rgba(61,220,151,.5); }
+.dot.warn { background: var(--amber); box-shadow: 0 0 8px rgba(255,178,36,.5); animation: blink 1.6s infinite; }
+.dot.off { background: #3a3e45; }
+.card .name { font-family: var(--disp); font-weight: 600; font-size: 16px; letter-spacing: .03em; }
+.card .path { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin: 3px 0 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .row { display: flex; justify-content: space-between; padding: 7px 0; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px; }
+.card .row span { color: var(--dim); }
+.card .row b { font-weight: 500; color: var(--text); }
+.card .row b.ok { color: var(--ok); } .card .row b.warn { color: var(--amber); } .card .row b.off { color: var(--faint); }
+.card.off { opacity: .55; }
+.card .badge-off {
+  position: absolute; top: 40px; right: 14px; font-family: var(--mono);
+  font-size: 9.5px; letter-spacing: .2em; color: var(--faint);
+  border: 1px solid var(--line); padding: 2px 7px;
+}
+/* 收编提示角标 */
+.card .adopt-flag {
+  margin-top: 10px; font-family: var(--mono); font-size: 11px; color: var(--amber);
+  background: rgba(255,178,36,.08); border: 1px dashed rgba(255,178,36,.35);
+  padding: 5px 9px; display: flex; align-items: center; gap: 7px; cursor: pointer;
+}
+.card .adopt-flag:hover { background: rgba(255,178,36,.16); }
+
+/* ---------- 操作台 ---------- */
+.console {
+  display: grid; grid-template-columns: 300px 1fr; gap: 0;
+  border: 1px solid var(--line); background: var(--bg1);
+  animation: rise .6s .46s cubic-bezier(.2,.7,.2,1) both;
+}
+.cmd-pane { border-right: 1px solid var(--line); padding: 20px; }
+.cmd-pane .label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .22em;
+  text-transform: uppercase; color: var(--faint); margin: 14px 0 8px;
+}
+.cmd-pane .label:first-child { margin-top: 0; }
+.cmds { display: grid; gap: 8px; }
+.cmd {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border: 1px solid var(--line); background: var(--bg2); cursor: pointer;
+  font-family: var(--mono); font-size: 12.5px; color: var(--text);
+  transition: border-color .2s, background .2s;
+}
+.cmd:hover { border-color: var(--line2); }
+.cmd.active { border-color: var(--amber); background: rgba(255,178,36,.07); }
+.cmd .code { color: var(--amber); }
+.cmd .desc { color: var(--faint); font-size: 11px; margin-left: auto; }
+/* dry-run 开关 */
+.toggle-row { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; }
+.toggle-row .t-label { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+.toggle {
+  width: 40px; height: 20px; border: 1px solid var(--line2); background: var(--bg0);
+  position: relative; cursor: pointer; transition: border-color .2s;
+}
+.toggle::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  background: var(--faint); transition: all .22s;
+}
+.toggle.on { border-color: var(--amber); }
+.toggle.on::after { left: 22px; background: var(--amber); box-shadow: 0 0 8px rgba(255,178,36,.5); }
+.run-btn {
+  width: 100%; margin-top: 20px; padding: 12px;
+  font-family: var(--disp); font-size: 14px; font-weight: 600; letter-spacing: .18em;
+  text-transform: uppercase; color: #111; background: var(--amber);
+  border: none; cursor: pointer; transition: filter .2s, transform .1s;
+}
+.run-btn:hover { filter: brightness(1.1); }
+.run-btn:active { transform: scale(.985); }
+.run-btn:disabled { background: var(--bg3); color: var(--faint); cursor: not-allowed; }
+/* 终端输出 */
+.term {
+  background: #07080a; min-height: 380px; padding: 16px 18px;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.85;
+  overflow-y: auto; max-height: 420px; position: relative;
+}
+.term .t-head {
+  display: flex; gap: 8px; align-items: center; position: sticky; top: -16px;
+  background: #07080a; padding: 2px 0 8px; margin: -4px 0 6px;
+  border-bottom: 1px solid #14161a; margin-bottom: 10px;
+}
+.term .t-head .dotset { display: flex; gap: 6px; }
+.term .t-head .dotset i { width: 9px; height: 9px; border-radius: 50%; background: #22262c; }
+.term .t-head .dotset i:nth-child(1) { background: #3a3e45; }
+.term .t-head .t-title { font-size: 10.5px; color: var(--faint); letter-spacing: .2em; margin-left: 6px; }
+.t-line { white-space: pre-wrap; word-break: break-all; }
+.t-line.cmdline { color: var(--amber); }
+.t-line.dim { color: var(--faint); }
+.t-line.ok { color: var(--ok); }
+.t-line.warn { color: var(--amber); }
+.t-line.err { color: var(--err); }
+.t-line.info { color: var(--info); }
+.t-line .ts { color: #3d4048; margin-right: 10px; }
+.cursor { display: inline-block; width: 7px; height: 14px; background: var(--amber);
+  vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+/* 确认执行条（横跨操作台底部，与终端无缝贴合） */
+.confirm-bar {
+  display: none; align-items: center; gap: 14px; padding: 13px 18px;
+  grid-column: 1 / -1;
+  background: rgba(255,178,36,.06); border-top: 1px solid rgba(255,178,36,.3);
+}
+.confirm-bar.show { display: flex; }
+.confirm-bar .txt { font-family: var(--mono); font-size: 12px; color: var(--amber); }
+.confirm-bar button {
+  margin-left: auto; padding: 7px 18px; font-family: var(--mono); font-size: 12px;
+  cursor: pointer; border: 1px solid var(--amber); background: var(--amber); color: #111;
+}
+.confirm-bar button.ghost { background: transparent; color: var(--amber); }
+
+/* ---------- 历史 / 日志 ---------- */
+.bottom { display: grid; grid-template-columns: 1fr 380px; gap: 16px; }
+.panel { border: 1px solid var(--line); background: var(--bg1); padding: 20px;
+  animation: rise .6s .52s cubic-bezier(.2,.7,.2,1) both; }
+/* 心跳条 */
+.heartbeats { display: flex; gap: 3px; margin: 4px 0 10px; }
+.hb { flex: 1; height: 34px; position: relative; cursor: pointer; transition: transform .15s; }
+.hb.ok { background: var(--ok-dim); border-top: 2px solid var(--ok); }
+.hb.warn { background: rgba(255,178,36,.14); border-top: 2px solid var(--amber); }
+.hb.err { background: rgba(255,93,93,.12); border-top: 2px solid var(--err); }
+.hb:hover { transform: scaleY(1.18); }
+.hb .tip {
+  display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  background: var(--bg3); border: 1px solid var(--line2); padding: 5px 10px;
+  font-family: var(--mono); font-size: 10.5px; color: var(--text); white-space: nowrap; z-index: 5;
+}
+.hb:hover .tip { display: block; }
+.hb-axis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--faint); }
+/* 日志流 */
+.loglines { font-family: var(--mono); font-size: 11.5px; line-height: 2; }
+.loglines .l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loglines .l:hover { color: #fff; }
+.loglines .ok { color: var(--ok); } .loglines .warn { color: var(--amber); }
+.loglines .err { color: var(--err); } .loglines .dim { color: var(--dim); } .loglines .ts { color: var(--faint); margin-right: 8px; }
+.panel .more { margin-top: 10px; font-family: var(--mono); font-size: 11px; color: var(--amber); cursor: pointer; }
+.panel .more:hover { text-decoration: underline; }
+
+/* ---------- Toast ---------- */
+#toast {
+  position: fixed; bottom: 30px; left: 50%; transform: translate(-50%, 20px);
+  background: var(--bg3); border: 1px solid var(--ok); color: var(--ok);
+  font-family: var(--mono); font-size: 12.5px; padding: 11px 22px;
+  opacity: 0; pointer-events: none; transition: all .3s; z-index: 99;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--line);
+  display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--faint); }
+
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes ping { 0% { transform: scale(.6); opacity: .9; } 80%, 100% { transform: scale(1.9); opacity: 0; } }
+@keyframes blink { 50% { opacity: .35; } }
+
+@media (max-width: 980px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+  .console { grid-template-columns: 1fr; }
+  .cmd-pane { border-right: none; border-bottom: 1px solid var(--line); }
+  .bottom { grid-template-columns: 1fr; }
+  .meta { display: none; }
+}
+
+/* ---------- 主题切换按钮 ---------- */
+.theme-btn {
+  align-self: center; margin-left: 20px; width: 36px; height: 36px;
+  border: 1px solid var(--line); background: var(--bg2); color: var(--dim);
+  font-size: 15px; cursor: pointer; transition: border-color .2s, color .2s;
+}
+.theme-btn:hover { border-color: var(--line2); color: var(--text); }
+
+/* ---------- 浅色主题：工程制图纸 ----------
+   暗色 = 碳黑仪表盘；浅色 = 暖纸底 + 墨线 + 青铜琥珀。
+   终端区保持暗屏（仪表上的 LCD），内部配色不随主题走。 */
+[data-theme="light"] {
+  --bg0: #f3f0e8; --bg1: #ece9dd; --bg2: #e5e1d2; --bg3: #dcd7c5;
+  --line: #d7d1c0; --line2: #beb6a0;
+  --amber: #9c6805; --ok: #0d8f60; --ok-dim: #9fcfb4;
+  --err: #c24040; --info: #1e6fc0;
+  --text: #242830; --dim: #5d5847; --faint: #8d8672;
+  --wire-off: #c9c3b2;
+}
+[data-theme="light"] body {
+  background-image:
+    radial-gradient(ellipse 900px 420px at 50% -10%, rgba(156,104,5,.08), transparent 60%),
+    repeating-linear-gradient(0deg, transparent 0 39px, rgba(36,40,48,.05) 39px 40px),
+    repeating-linear-gradient(90deg, transparent 0 39px, rgba(36,40,48,.05) 39px 40px);
+}
+[data-theme="light"] ::selection { background: var(--amber); color: #fff; }
+[data-theme="light"] .bus {
+  background: linear-gradient(180deg, rgba(156,104,5,.05), transparent 55%), var(--bg1);
+}
+[data-theme="light"] .cmd.active { background: rgba(156,104,5,.10); }
+[data-theme="light"] .card .adopt-flag { background: rgba(156,104,5,.09); border-color: rgba(156,104,5,.45); }
+[data-theme="light"] .card .adopt-flag:hover { background: rgba(156,104,5,.17); }
+[data-theme="light"] .dot.ok { box-shadow: 0 0 8px rgba(13,143,96,.45); }
+[data-theme="light"] .dot.warn { box-shadow: 0 0 8px rgba(156,104,5,.45); }
+[data-theme="light"] .toggle.on::after { box-shadow: 0 0 8px rgba(156,104,5,.4); }
+[data-theme="light"] .confirm-bar { background: rgba(156,104,5,.07); border-top-color: rgba(156,104,5,.4); }
+[data-theme="light"] .run-btn, [data-theme="light"] .confirm-bar button { color: #fff; }
+[data-theme="light"] .confirm-bar button.ghost { background: transparent; color: var(--amber); }
+[data-theme="light"] .t-line.cmdline, [data-theme="light"] .t-line.warn { color: #ffb224; }
+[data-theme="light"] .t-line.ok { color: #3ddc97; }
+[data-theme="light"] .t-line.err { color: #ff5d5d; }
+[data-theme="light"] .t-line.info { color: #6ab7ff; }
+[data-theme="light"] .cursor { background: #ffb224; }
+
+/* ---------- View Transitions 主题切换动画（与 btw-sport-admin 同款） ---------- */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+/* 新状态为亮色（默认）：亮色新视图在上层，从点击处向外扩散 */
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2147483646; }
+/* 新状态为暗色（无 light 属性）：亮色旧视图在上层，向点击处收缩 */
+html:not([data-theme="light"])::view-transition-old(root) { z-index: 2147483646; }
+html:not([data-theme="light"])::view-transition-new(root) { z-index: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 顶栏 -->
+  <header>
+    <div class="brand">
+      <h1>AGENT<b>·</b>SYNC</h1>
+      <span class="sub">同步控制台 / v0.3.0</span>
+    </div>
+    <div class="meta">
+      <div><div class="k">Registry</div><div class="v amber">v12 · 14 agents</div></div>
+      <div><div class="k">上次备份</div><div class="v">今天 08:00 ✓</div></div>
+      <div><div class="k">定时任务</div><div class="v">每日 08:00</div></div>
+    </div>
+    <button class="theme-btn" id="themeBtn" title="切换深浅主题">☀</button>
+  </header>
+
+  <!-- 全局健康 -->
+  <div class="healthbar warn">
+    <div class="pulse"></div>
+    <div class="big">3/4 已接入 · 1 处待处理<em>claude 缺规则块 doc-discipline · 2 个新技能待收编</em></div>
+    <div class="health-stats">
+      <div><span>技能源 </span><b class="ok">53</b></div>
+      <div><span>链接 </span><b class="warn">150/153</b></div>
+      <div><span>规则块 </span><b class="warn">5/6</b></div>
+      <div><span>备份 </span><b class="ok">errors=0</b></div>
+    </div>
+  </div>
+
+  <!-- 拓扑总线 -->
+  <div class="bus">
+    <span class="tag">// 单源辐射拓扑 · 一处维护，处处生效</span>
+    <svg viewBox="0 0 1100 190" preserveAspectRatio="xMidYMid meet">
+      <!-- 源节点 -->
+      <rect class="svg-src" x="30" y="60" width="200" height="72" stroke-width="1.5"/>
+      <rect class="svg-src-strip" x="30" y="60" width="200" height="3"/>
+      <text class="src-label" x="46" y="88">~/.agents</text>
+      <text class="src-path" x="46" y="106">skills · rules · memory</text>
+      <text class="src-path" x="46" y="121">SINGLE SOURCE</text>
+      <!-- 连线（源右侧中点 x=230,y=96 → 各节点） -->
+      <!-- claude -->
+      <path class="wire" d="M230 96 C 400 96, 480 42, 660 42">
+        <animate attributeName="stroke-dashoffset" from="0" to="-95" dur="2.6s" repeatCount="indefinite"/>
+      </path>
+      <!-- zcode -->
+      <path class="wire" d="M230 96 C 400 96, 480 96, 660 96">
+      </path>
+      <!-- workbuddy -->
+      <path class="wire" d="M230 96 C 400 96, 480 150, 660 150">
+      </path>
+      <!-- trae 虚线 -->
+      <path class="wire off" d="M230 96 C 400 96, 480 178, 660 178"/>
+      <!-- agent 节点 -->
+      <g>
+        <rect class="svg-box" x="660" y="24" width="180" height="36"/>
+        <circle class="s-dot" cx="676" cy="42" r="4"/>
+        <text class="node-label" x="690" y="46">claude-code</text>
+        <text class="node-sub" x="852" y="46" text-anchor="end">50/51 · ⚠</text>
+      </g>
+      <g>
+        <rect class="svg-box" x="660" y="78" width="180" height="36"/>
+        <circle class="s-dot" cx="676" cy="96" r="4"/>
+        <text class="node-label" x="690" y="100">zcode</text>
+        <text class="node-sub" x="852" y="100" text-anchor="end">51/51 · ✓</text>
+      </g>
+      <g>
+        <rect class="svg-box" x="660" y="132" width="180" height="36"/>
+        <circle class="s-dot" cx="676" cy="150" r="4"/>
+        <text class="node-label" x="690" y="154">workbuddy</text>
+        <text class="node-sub" x="852" y="154" text-anchor="end">51/51 · ✓</text>
+      </g>
+      <g opacity=".45">
+        <rect class="svg-off" x="660" y="160" width="180" height="28" stroke-dasharray="3 3"/>
+        <circle class="s-dot-off" cx="676" cy="174" r="3.5"/>
+        <text class="node-sub" x="690" y="178">trae · 未接入</text>
+      </g>
+      <!-- 流光 -->
+      <circle class="f-amber" r="2.5">
+        <animateMotion dur="2.6s" repeatCount="indefinite" path="M230 96 C 400 96, 480 42, 660 42"/>
+      </circle>
+      <circle class="f-ok" r="2.5">
+        <animateMotion dur="3s" repeatCount="indefinite" path="M230 96 C 400 96, 480 96, 660 96"/>
+      </circle>
+      <circle class="f-ok" r="2.5">
+        <animateMotion dur="3.4s" repeatCount="indefinite" path="M230 96 C 400 96, 480 150, 660 150"/>
+      </circle>
+      <!-- 源心跳 -->
+      <text class="src-path" x="130" y="155" text-anchor="middle">◉ 源健康 · 53 skills / 2 rules</text>
+    </svg>
+  </div>
+
+  <!-- Agent 状态卡片 -->
+  <div class="sec"><h2><i>01</i>AGENT 状态</h2><span class="note">// 每 10s 轮询 · 点击卡片查看详情</span></div>
+  <div class="grid">
+    <div class="card" onclick="runCmd('links')">
+      <div class="dot warn"></div>
+      <div class="name">claude-code</div>
+      <div class="path">~/.claude</div>
+      <div class="row"><span>技能链接</span><b class="warn">50 / 51</b></div>
+      <div class="row"><span>规则块</span><b class="warn">1 / 2</b></div>
+      <div class="row"><span>收编待办</span><b class="warn">2</b></div>
+      <div class="adopt-flag">⟳ 发现新技能 ×2 · 点击收编</div>
+    </div>
+    <div class="card" onclick="runCmd('links')">
+      <div class="dot ok"></div>
+      <div class="name">zcode</div>
+      <div class="path">~/.zcode/cli/skills</div>
+      <div class="row"><span>技能链接</span><b class="ok">51 / 51</b></div>
+      <div class="row"><span>规则块</span><b class="ok">2 / 2</b></div>
+      <div class="row"><span>收编待办</span><b class="ok">0</b></div>
+    </div>
+    <div class="card" onclick="runCmd('links')">
+      <div class="dot ok"></div>
+      <div class="name">workbuddy</div>
+      <div class="path">~/.workbuddy</div>
+      <div class="row"><span>技能链接</span><b class="ok">51 / 51</b></div>
+      <div class="row"><span>规则块</span><b class="ok">2 / 2</b></div>
+      <div class="row"><span>收编待办</span><b class="ok">0</b></div>
+    </div>
+    <div class="card off">
+      <div class="dot off"></div>
+      <div class="name">trae</div>
+      <div class="path">~/.trae · 自有体系</div>
+      <div class="row"><span>技能链接</span><b class="off">—</b></div>
+      <div class="row"><span>规则块</span><b class="off">—</b></div>
+      <div class="badge-off">NOT LINKED</div>
+    </div>
+  </div>
+
+  <!-- 操作台 -->
+  <div class="sec"><h2><i>02</i>操作台</h2><span class="note">// 预演先行 · 确认后才落盘</span></div>
+  <div class="console">
+    <div class="cmd-pane">
+      <div class="label">命令</div>
+      <div class="cmds">
+        <div class="cmd active" data-cmd="links"><span class="code">sync</span> links <span class="desc">技能映射</span></div>
+        <div class="cmd" data-cmd="rules"><span class="code">sync</span> rules <span class="desc">规则注入</span></div>
+        <div class="cmd" data-cmd="adopt"><span class="code">sync</span> adopt <span class="desc">收编巡检</span></div>
+        <div class="cmd" data-cmd="backup"><span class="code">backup</span> <span class="desc">镜像备份</span></div>
+        <div class="cmd" data-cmd="check"><span class="code">sync</span> check <span class="desc">一致性巡检</span></div>
+      </div>
+      <div class="toggle-row">
+        <span class="t-label">--dry-run 预演模式</span>
+        <div class="toggle on" id="dryrun" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <button class="run-btn" id="runBtn" onclick="runCmd()">▶ 执 行</button>
+    </div>
+    <div class="term" id="term">
+      <div class="t-head">
+        <div class="dotset"><i></i><i></i><i></i></div>
+        <span class="t-title">OUTPUT · NDJSON STREAM</span>
+      </div>
+      <div id="lines">
+        <div class="t-line dim">// 选择命令后点击执行 · 默认预演，不写盘</div>
+        <div class="t-line dim">// agent-sync links --dry-run</div>
+      </div>
+    </div>
+    <div class="confirm-bar" id="confirmBar">
+      <span class="txt">✓ 预演完成 · 3 个动作待确认落盘</span>
+      <button class="ghost" onclick="hideConfirm()">放弃</button>
+      <button onclick="confirmRun()">确认正式执行</button>
+    </div>
+  </div>
+
+  <!-- 历史 + 日志 -->
+  <div class="sec"><h2><i>03</i>历史与记录</h2><span class="note">// 近 30 次运行</span></div>
+  <div class="bottom">
+    <div class="panel">
+      <div class="label" style="font-family:var(--mono);font-size:10px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;margin-bottom:8px;">运行心跳 · sync + backup</div>
+      <div class="heartbeats" id="hb"></div>
+      <div class="hb-axis"><span>30 天前</span><span>15 天前</span><span>今天</span></div>
+    </div>
+    <div class="panel">
+      <div class="label" style="font-family:var(--mono);font-size:10px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;margin-bottom:8px;">sync-log.txt · 尾部</div>
+      <div class="loglines">
+        <div class="l"><span class="ts">09-30 08:00</span><span class="dim">backup</span> incr · 复制 3 / 跳过 1185 · <span class="ok">errors=0</span></div>
+        <div class="l"><span class="ts">09-29 22:14</span><span class="dim">adopt</span> 收编 <span class="ok">agreement-docx-to-richtext</span> → 源</div>
+        <div class="l"><span class="ts">09-29 22:14</span><span class="dim">links</span> 新建 junction ×3 · <span class="ok">ok</span></div>
+        <div class="l"><span class="ts">09-28 08:00</span><span class="dim">backup</span> incr · 复制 11 / 跳过 1177 · <span class="ok">errors=0</span></div>
+        <div class="l"><span class="ts">09-27 19:03</span><span class="dim">rules</span> ⚠ claude 缺块 doc-discipline · <span class="warn">已注入</span></div>
+        <div class="l"><span class="ts">09-27 19:02</span><span class="dim">rules</span> zcode/workbuddy 块 hash 一致 · <span class="ok">skip</span></div>
+        <div class="l"><span class="ts">09-26 08:00</span><span class="dim">backup</span> incr · <span class="err">D 盘暂不可达 · 重试成功</span></div>
+      </div>
+      <div class="more">查看完整日志 →</div>
+    </div>
+  </div>
+
+  <footer>
+    <span>agent-sync · local only · 127.0.0.1</span>
+    <span>源 ~/.agents · 备份 D:\ai-agent-backup · 注册表 v12</span>
+  </footer>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ---------------- 假数据驱动的交互演示 ---------------- */
+
+// 主题切换：默认暗色，选择记忆在 localStorage（head 里有防闪烁的早置脚本）。
+// 切换动画 = View Transitions API 圆形揭示（与 btw-sport-admin 同款）：
+// 变亮 = 亮色新视图从点击处扩散；变暗 = 亮色旧视图向点击处收缩。
+// 不支持该 API 的浏览器自动退化为直接切换。
+const themeBtn = document.getElementById('themeBtn');
+function paintTheme(t) {
+  document.documentElement.dataset.theme = t;
+  themeBtn.textContent = t === 'light' ? '☾' : '☀';
+}
+function applyTheme(t, event) {
+  try { localStorage.setItem('as-theme', t); } catch (e) {}
+  if (!document.startViewTransition || !event) { paintTheme(t); return; }
+  const x = event.clientX, y = event.clientY;
+  const endRadius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  const goingLight = t === 'light';
+  const transition = document.startViewTransition(() => paintTheme(t));
+  transition.ready.then(() => {
+    document.documentElement.animate(
+      {
+        clipPath: goingLight
+          ? [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`]
+          : [`circle(${endRadius}px at ${x}px ${y}px)`, `circle(0px at ${x}px ${y}px)`],
+      },
+      { duration: 450, easing: 'ease-in', fill: 'both',
+        pseudoElement: goingLight ? '::view-transition-new(root)' : '::view-transition-old(root)' },
+    );
+  });
+}
+applyTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+themeBtn.addEventListener('click', (event) =>
+  applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light', event));
+
+// 心跳条：近 30 天
+(() => {
+  const hb = document.getElementById('hb');
+  const states = [];
+  for (let i = 0; i < 30; i++) {
+    states.push(i === 3 ? 'warn' : (i === 26 ? 'warn' : (i === 11 ? 'err' : 'ok')));
+  }
+  hb.innerHTML = states.map((s, i) => {
+    const d = new Date(2026, 8, 1 + i);
+    const tip = `${d.getMonth()+1}/${d.getDate()} · ${s === 'ok' ? '全部同步 ✓' : s === 'warn' ? '有漂移，已修复' : '备份失败，重试成功'}`;
+    return `<div class="hb ${s}"><span class="tip">${tip}</span></div>`;
+  }).join('');
+})();
+
+// 命令选择
+let currentCmd = 'links';
+document.querySelectorAll('.cmd').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.cmd').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    currentCmd = el.dataset.cmd;
+  });
+});
+
+// 命令输出脚本（假 NDJSON 流）
+const SCRIPTS = {
+  links: [
+    ['cmdline', 'agent-sync links --dry-run'],
+    ['dim', '探测注册表 v12 · 14 agents · 命中 3'],
+    ['info', 'claude-code  检查 ~/.claude/skills'],
+    ['warn', '  ↳ 实体目录 ×2（待收编）: wise-ppt, agreement-docx-to-richtext'],
+    ['info', '  ↳ 缺失链接 ×1: html-ppt'],
+    ['info', 'zcode        检查 ~/.zcode/cli/skills'],
+    ['ok', '  ↳ 51/51 链接完整'],
+    ['info', 'workbuddy    检查 ~/.workbuddy/skills'],
+    ['ok', '  ↳ 51/51 链接完整'],
+    ['dim', '—— 预演结果 ——'],
+    ['ok', '{"type":"summary","actions":3,"errors":0}'],
+    ['dim', '// 未写盘。正式执行将创建 1 个 junction，实体目录转入 adopt 流程'],
+  ],
+  rules: [
+    ['cmdline', 'agent-sync rules --dry-run'],
+    ['dim', '读取 ~/.agents/rules/*.md · 2 块'],
+    ['info', 'doc-discipline   目标 3 处'],
+    ['ok', '  ↳ zcode/AGENTS.md     hash 一致 · skip'],
+    ['ok', '  ↳ workbuddy/SOUL.md   hash 一致 · skip'],
+    ['warn', '  ↳ claude/CLAUDE.md    缺块 → 追加（备份至 backups/rules-20260930/）'],
+    ['info', 'ponytail         目标 3 处'],
+    ['ok', '  ↳ 三处 hash 一致 · skip'],
+    ['dim', '—— 预演结果 ——'],
+    ['ok', '{"type":"summary","actions":1,"errors":0}'],
+  ],
+  adopt: [
+    ['cmdline', 'agent-sync adopt --dry-run'],
+    ['dim', '扫描各 agent skills 目录中的实体目录…'],
+    ['info', 'claude-code:'],
+    ['warn', '  ↳ wise-ppt                        → 移入源 + 补链接'],
+    ['warn', '  ↳ agreement-docx-to-richtext      → 移入源 + 补链接'],
+    ['ok', '{"type":"summary","adopt":2,"errors":0}'],
+    ['dim', '// 移动前将打印完整清单 · --yes 跳过确认'],
+  ],
+  backup: [
+    ['cmdline', 'agent-sync backup --dry-run'],
+    ['dim', 'SOURCES = 源目录 + 注册表探测结果'],
+    ['info', 'global-agents-skills  比对 1188 文件 · 将复制 2'],
+    ['info', 'claudecode-skills     比对 53 文件   · 将复制 1'],
+    ['info', 'zcode-memories        比对 41 文件   · 无变化'],
+    ['ok', '{"type":"summary","copy":3,"skip":1185,"errors":0}'],
+  ],
+  check: [
+    ['cmdline', 'agent-sync check'],
+    ['dim', '注册表探测 + 块 hash + 链接有效性 · 全量巡检'],
+    ['ok', 'claude-code  skills ⚠(50/51)  rules ⚠(1/2)  memory ✓'],
+    ['ok', 'zcode        skills ✓         rules ✓        memory ✓'],
+    ['ok', 'workbuddy    skills ✓         rules ✓        memory ✓'],
+    ['dim', 'trae         未接入（注册表声明 optional）'],
+    ['warn', '结论：2 项待处理 · 建议依次执行 links → adopt → rules'],
+  ],
+};
+
+// 流式输出
+let running = false;
+function runCmd(cmd) {
+  if (cmd) {
+    const el = document.querySelector(`.cmd[data-cmd="${cmd}"]`);
+    if (el) el.click();
+  }
+  if (running) return;
+  running = true;
+  hideConfirm();
+  const dry = document.getElementById('dryrun').classList.contains('on');
+  const script = SCRIPTS[currentCmd].map(l => (l[0] === 'cmdline' && !dry)
+    ? [l[0], l[1].replace('--dry-run', '')] : l);
+  const box = document.getElementById('lines');
+  const term = document.getElementById('term');
+  box.innerHTML = '';
+  let i = 0;
+  (function next() {
+    if (i >= script.length) {
+      box.insertAdjacentHTML('beforeend', '<div class="t-line"><span class="cursor"></span></div>');
+      running = false;
+      if (dry) showConfirm();
+      else toast('✓ 执行完成 · 已写入 sync-log.txt');
+      return;
+    }
+    const [cls, text] = script[i++];
+    const ts = new Date().toTimeString().slice(0, 8);
+    box.insertAdjacentHTML('beforeend',
+      `<div class="t-line ${cls}"><span class="ts">${ts}</span>${text}</div>`);
+    term.scrollTop = term.scrollHeight;
+    setTimeout(next, text.startsWith('{') ? 420 : 260);
+  })();
+}
+
+function showConfirm() { document.getElementById('confirmBar').classList.add('show'); }
+function hideConfirm() { document.getElementById('confirmBar').classList.remove('show'); }
+function confirmRun() {
+  hideConfirm();
+  document.getElementById('dryrun').classList.remove('on');
+  runCmd();
+  document.getElementById('dryrun').classList.add('on');
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+</script>
+</body>
+</html>

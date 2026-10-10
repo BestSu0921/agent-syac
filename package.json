@@ -1,0 +1,33 @@
+{
+  "name": "agent-sync",
+  "version": "0.1.0",
+  "description": "AI agent 技能/规则/记忆单源同步：一处维护，处处生效（claude / zcode / workbuddy / trae 项目级）",
+  "type": "module",
+  "bin": {
+    "agent-sync": "cli.mjs"
+  },
+  "files": [
+    "cli.mjs",
+    "sync.mjs",
+    "server.mjs",
+    "backup-agents.mjs",
+    "web/index.html",
+    "README.md"
+  ],
+  "keywords": [
+    "claude-code",
+    "agent-skills",
+    "skill-management",
+    "agents-md",
+    "sync",
+    "ai-agent"
+  ],
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BestSu0921/agent-syac.git"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

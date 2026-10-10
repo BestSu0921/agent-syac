@@ -1,0 +1,12 @@
+{
+  "main": "sea-bootstrap.cjs",
+  "output": "sea-prep.blob",
+  "disableExperimentalSEAWarning": true,
+  "useAssets": true,
+  "assets": {
+    "server.mjs": "../server.mjs",
+    "sync.mjs": "../sync.mjs",
+    "backup-agents.mjs": "../backup-agents.mjs",
+    "web/index.html": "../web/index.html"
+  }
+}

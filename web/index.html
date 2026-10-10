@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AGENT-SYNC · 同步控制台</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('as-theme')||'dark'}catch(e){}</script>
+<style>
+:root {
+  --bg0: #0b0c0e;
+  --bg1: #111317;
+  --bg2: #171a1f;
+  --bg3: #1e2228;
+  --line: #272b32;
+  --line2: #343941;
+  --amber: #ffb224;
+  --amber-dim: #8a6420;
+  --ok: #3ddc97;
+  --ok-dim: #1d5c42;
+  --err: #ff5d5d;
+  --info: #6ab7ff;
+  --text: #e9e4d8;
+  --dim: #918c7f;
+  --faint: #5d594f;
+  --wire-off: #2a2d33;
+  --mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  --disp: "Chakra Petch", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --body: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scrollbar-color: var(--line2) var(--bg0); }
+body {
+  background: var(--bg0);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+  background-image:
+    radial-gradient(ellipse 900px 420px at 50% -10%, rgba(255,178,36,.075), transparent 60%),
+    repeating-linear-gradient(0deg, transparent 0 39px, rgba(255,255,255,.018) 39px 40px),
+    repeating-linear-gradient(90deg, transparent 0 39px, rgba(255,255,255,.018) 39px 40px);
+}
+::selection { background: var(--amber); color: #111; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px 90px; }
+
+header {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 34px 0 22px;
+  border-bottom: 1px solid var(--line);
+  animation: rise .6s cubic-bezier(.2,.7,.2,1) both;
+}
+.brand { display: flex; align-items: baseline; gap: 14px; }
+.brand h1 { font-family: var(--disp); font-size: 26px; font-weight: 700; letter-spacing: .06em; color: var(--text); }
+.brand h1 b { color: var(--amber); font-weight: 700; }
+.brand .sub { font-family: var(--mono); font-size: 11px; color: var(--dim); letter-spacing: .22em; text-transform: uppercase; }
+.meta { display: flex; gap: 26px; font-family: var(--mono); font-size: 12px; }
+.meta div { text-align: right; }
+.meta .k { color: var(--faint); font-size: 10px; letter-spacing: .18em; text-transform: uppercase; }
+.meta .v { color: var(--text); margin-top: 2px; }
+.meta .v.amber { color: var(--amber); }
+.theme-btn {
+  align-self: center; margin-left: 20px; width: 36px; height: 36px;
+  border: 1px solid var(--line); background: var(--bg2); color: var(--dim);
+  font-size: 15px; cursor: pointer; transition: border-color .2s, color .2s;
+}
+.theme-btn:hover { border-color: var(--line2); color: var(--text); }
+
+.healthbar {
+  display: flex; align-items: center; gap: 22px;
+  margin: 26px 0 30px; padding: 18px 24px;
+  background: linear-gradient(180deg, var(--bg1), var(--bg0));
+  border: 1px solid var(--line); border-left: 3px solid var(--ok);
+  animation: rise .6s .08s cubic-bezier(.2,.7,.2,1) both;
+}
+.healthbar.warn { border-left-color: var(--amber); }
+.pulse { position: relative; width: 11px; height: 11px; border-radius: 50%; background: var(--ok); flex: none; }
+.pulse::after {
+  content: ""; position: absolute; inset: -5px; border-radius: 50%;
+  border: 1px solid var(--ok); opacity: 0; animation: ping 2.2s ease-out infinite;
+}
+.healthbar.warn .pulse { background: var(--amber); }
+.healthbar.warn .pulse::after { border-color: var(--amber); }
+.healthbar .big { font-family: var(--disp); font-size: 17px; font-weight: 600; letter-spacing: .02em; }
+.healthbar .big em { font-style: normal; color: var(--dim); font-family: var(--body); font-size: 13px; margin-left: 10px; }
+.health-stats { margin-left: auto; display: flex; gap: 30px; font-family: var(--mono); font-size: 12px; }
+.health-stats span { color: var(--faint); }
+.health-stats b { color: var(--text); font-weight: 500; }
+.health-stats b.ok { color: var(--ok); }
+.health-stats b.warn { color: var(--amber); }
+
+.bus {
+  margin-bottom: 34px; padding: 26px 10px 10px;
+  border: 1px solid var(--line); background: linear-gradient(180deg, rgba(255,178,36,.03), transparent 55%), var(--bg1);
+  position: relative; overflow: hidden;
+  animation: rise .6s .16s cubic-bezier(.2,.7,.2,1) both;
+}
+.bus .tag {
+  position: absolute; top: 12px; left: 16px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .24em;
+  color: var(--faint); text-transform: uppercase;
+}
+.bus svg { display: block; width: 100%; height: auto; }
+.bus .src-label { font-family: var(--mono); font-size: 12px; fill: var(--text); }
+.bus .src-path { font-family: var(--mono); font-size: 10px; fill: var(--faint); }
+.bus .node-label { font-family: var(--mono); font-size: 11.5px; fill: var(--text); }
+.bus .node-sub { font-family: var(--mono); font-size: 10px; fill: var(--faint); }
+.wire { fill: none; stroke: var(--ok-dim); stroke-width: 1.5; }
+.wire.warn { stroke: var(--amber-dim); }
+.wire.off { stroke: var(--wire-off); stroke-dasharray: 3 5; }
+.svg-src { fill: var(--bg2); stroke: var(--amber); }
+.svg-src-strip { fill: var(--amber); }
+.svg-box { fill: var(--bg2); stroke: var(--line); }
+.svg-off { fill: var(--bg1); stroke: var(--line); }
+.s-dot { fill: var(--ok); }
+.s-dot-warn { fill: var(--amber); }
+.s-dot-off { fill: var(--faint); }
+.f-amber { fill: var(--amber); }
+.f-ok { fill: var(--ok); }
+
+.sec { display: flex; align-items: baseline; gap: 12px; margin: 34px 0 16px; }
+.sec h2 {
+  font-family: var(--disp); font-size: 15px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--text);
+}
+.sec h2 i { font-style: normal; color: var(--amber); margin-right: 8px; font-family: var(--mono); }
+.sec .note { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.card {
+  background: linear-gradient(180deg, var(--bg2), var(--bg1));
+  border: 1px solid var(--line); padding: 18px 18px 16px;
+  position: relative; transition: border-color .25s, transform .25s;
+  animation: rise .6s both cubic-bezier(.2,.7,.2,1);
+}
+.card:hover { border-color: var(--line2); transform: translateY(-2px); }
+.card .dot { position: absolute; top: 18px; right: 16px; width: 8px; height: 8px; border-radius: 50%; }
+.dot.ok { background: var(--ok); box-shadow: 0 0 8px rgba(61,220,151,.5); }
+.dot.warn { background: var(--amber); box-shadow: 0 0 8px rgba(255,178,36,.5); animation: blink 1.6s infinite; }
+.dot.off { background: #3a3e45; }
+.card .name { font-family: var(--disp); font-weight: 600; font-size: 16px; letter-spacing: .03em; }
+.card .path { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin: 3px 0 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .row { display: flex; justify-content: space-between; padding: 7px 0; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px; }
+.card .row span { color: var(--dim); }
+.card .row b { font-weight: 500; color: var(--text); }
+.card .row b.ok { color: var(--ok); } .card .row b.warn { color: var(--amber); } .card .row b.off { color: var(--faint); }
+.card.off { opacity: .55; }
+.card .badge-off {
+  position: absolute; top: 40px; right: 14px; font-family: var(--mono);
+  font-size: 9.5px; letter-spacing: .2em; color: var(--faint);
+  border: 1px solid var(--line); padding: 2px 7px;
+}
+.card .adopt-flag {
+  margin-top: 10px; font-family: var(--mono); font-size: 11px; color: var(--amber);
+  background: rgba(255,178,36,.08); border: 1px dashed rgba(255,178,36,.35);
+  padding: 5px 9px; display: flex; align-items: center; gap: 7px; cursor: pointer;
+}
+.card .adopt-flag:hover { background: rgba(255,178,36,.16); }
+
+.console {
+  display: grid; grid-template-columns: 300px 1fr; gap: 0;
+  border: 1px solid var(--line); background: var(--bg1);
+  animation: rise .6s .46s cubic-bezier(.2,.7,.2,1) both;
+}
+.cmd-pane { border-right: 1px solid var(--line); padding: 20px; }
+.cmd-pane .label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .22em;
+  text-transform: uppercase; color: var(--faint); margin: 14px 0 8px;
+}
+.cmd-pane .label:first-child { margin-top: 0; }
+.cmds { display: grid; gap: 8px; }
+.cmd {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border: 1px solid var(--line); background: var(--bg2); cursor: pointer;
+  font-family: var(--mono); font-size: 12.5px; color: var(--text);
+  transition: border-color .2s, background .2s;
+}
+.cmd:hover { border-color: var(--line2); }
+.cmd.active { border-color: var(--amber); background: rgba(255,178,36,.07); }
+.cmd .code { color: var(--amber); }
+.cmd .desc { color: var(--faint); font-size: 11px; margin-left: auto; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; }
+.toggle-row .t-label { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+.toggle {
+  width: 40px; height: 20px; border: 1px solid var(--line2); background: var(--bg0);
+  position: relative; cursor: pointer; transition: border-color .2s;
+}
+.toggle::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  background: var(--faint); transition: all .22s;
+}
+.toggle.on { border-color: var(--amber); }
+.toggle.on::after { left: 22px; background: var(--amber); box-shadow: 0 0 8px rgba(255,178,36,.5); }
+.run-btn {
+  width: 100%; margin-top: 20px; padding: 12px;
+  font-family: var(--disp); font-size: 14px; font-weight: 600; letter-spacing: .18em;
+  text-transform: uppercase; color: #111; background: var(--amber);
+  border: none; cursor: pointer; transition: filter .2s, transform .1s;
+}
+.run-btn:hover { filter: brightness(1.1); }
+.run-btn:active { transform: scale(.985); }
+.run-btn:disabled { background: var(--bg3); color: var(--faint); cursor: not-allowed; }
+.term {
+  background: #07080a; min-height: 380px; padding: 16px 18px;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.85;
+  overflow-y: auto; max-height: 420px; position: relative;
+}
+.term .t-head {
+  display: flex; gap: 8px; align-items: center; position: sticky; top: -16px;
+  background: #07080a; padding: 2px 0 8px; margin: -4px 0 6px;
+  border-bottom: 1px solid #14161a; margin-bottom: 10px;
+}
+.term .t-head .dotset { display: flex; gap: 6px; }
+.term .t-head .dotset i { width: 9px; height: 9px; border-radius: 50%; background: #22262c; }
+.term .t-head .dotset i:nth-child(1) { background: #3a3e45; }
+.term .t-head .t-title { font-size: 10.5px; color: var(--faint); letter-spacing: .2em; margin-left: 6px; }
+.t-line { white-space: pre-wrap; word-break: break-all; }
+.t-line.cmdline { color: var(--amber); }
+.t-line.dim { color: var(--faint); }
+.t-line.ok { color: var(--ok); }
+.t-line.warn { color: var(--amber); }
+.t-line.err { color: var(--err); }
+.t-line.info { color: var(--info); }
+.t-line .ts { color: #3d4048; margin-right: 10px; }
+.cursor { display: inline-block; width: 7px; height: 14px; background: var(--amber);
+  vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+.confirm-bar {
+  display: none; align-items: center; gap: 14px; padding: 13px 18px;
+  grid-column: 1 / -1;
+  background: rgba(255,178,36,.06); border-top: 1px solid rgba(255,178,36,.3);
+}
+.confirm-bar.show { display: flex; }
+.confirm-bar .txt { font-family: var(--mono); font-size: 12px; color: var(--amber); }
+.confirm-bar button {
+  margin-left: auto; padding: 7px 18px; font-family: var(--mono); font-size: 12px;
+  cursor: pointer; border: 1px solid var(--amber); background: var(--amber); color: #111;
+}
+.confirm-bar button.ghost { background: transparent; color: var(--amber); }
+
+.bottom { display: grid; grid-template-columns: 1fr 380px; gap: 16px; }
+.panel { border: 1px solid var(--line); background: var(--bg1); padding: 20px;
+  animation: rise .6s .52s cubic-bezier(.2,.7,.2,1) both; }
+.p-label { font-family: var(--mono); font-size: 10px; letter-spacing: .22em; color: var(--faint); text-transform: uppercase; margin-bottom: 8px; }
+.heartbeats { display: flex; gap: 3px; margin: 4px 0 10px; }
+.hb { flex: 1; height: 34px; position: relative; cursor: pointer; transition: transform .15s; }
+.hb.ok { background: var(--ok-dim); border-top: 2px solid var(--ok); }
+.hb.err { background: rgba(255,93,93,.12); border-top: 2px solid var(--err); }
+.hb.off { background: rgba(128,128,128,.08); border-top: 2px solid var(--line); }
+.hb:hover { transform: scaleY(1.18); }
+.hb .tip {
+  display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  background: var(--bg3); border: 1px solid var(--line2); padding: 5px 10px;
+  font-family: var(--mono); font-size: 10.5px; color: var(--text); white-space: nowrap; z-index: 5;
+}
+.hb:hover .tip { display: block; }
+.hb-axis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--faint); }
+.loglines { font-family: var(--mono); font-size: 11.5px; line-height: 2; }
+/* ---------- 技能库：左分类右技能的主从布局，两侧限高滚动 ---------- */
+.skill-wrap { display: grid; grid-template-columns: 230px 1fr; gap: 14px; align-items: start; }
+.cat-list { border: 1px solid var(--line); background: var(--bg1); max-height: 430px; overflow-y: auto; }
+.cat-item {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 9px 12px; cursor: pointer; font-size: 12.5px; color: var(--dim);
+  border-left: 3px solid transparent; border-bottom: 1px solid var(--line);
+}
+.cat-item:last-child { border-bottom: none; }
+.cat-item:hover { color: var(--text); background: var(--bg2); }
+.cat-item.active { color: var(--amber); border-left-color: var(--amber); background: rgba(255,178,36,.06); }
+.cat-item .n { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.skill-main { min-width: 0; }
+.skill-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 8px;
+  max-height: 430px; overflow-y: auto; padding: 2px 6px 2px 0;
+}
+.skill { border: 1px solid var(--line); background: var(--bg2); padding: 8px 11px; transition: border-color .2s; }
+.skill:hover { border-color: var(--line2); }
+.skill b { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--amber); }
+.skill .tag {
+  display: inline-block; margin-left: 7px; padding: 0 6px; font-size: 10px;
+  color: var(--amber); border: 1px solid var(--amber-dim); vertical-align: 1px;
+}
+.skill .short { display: block; font-size: 12.5px; color: var(--text); margin-top: 3px; }
+.skill .desc {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: 10.5px; color: var(--faint); line-height: 1.5; margin-top: 2px;
+}
+.loglines .l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loglines .l:hover { color: #fff; }
+.loglines .ok { color: var(--ok); } .loglines .warn { color: var(--amber); }
+.loglines .err { color: var(--err); } .loglines .dim { color: var(--dim); } .loglines .ts { color: var(--faint); margin-right: 8px; }
+
+#toast {
+  position: fixed; bottom: 30px; left: 50%; transform: translate(-50%, 20px);
+  background: var(--bg3); border: 1px solid var(--ok); color: var(--ok);
+  font-family: var(--mono); font-size: 12.5px; padding: 11px 22px;
+  opacity: 0; pointer-events: none; transition: all .3s; z-index: 99;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--line);
+  display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--faint); }
+
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes ping { 0% { transform: scale(.6); opacity: .9; } 80%, 100% { transform: scale(1.9); opacity: 0; } }
+@keyframes blink { 50% { opacity: .35; } }
+
+/* ---------- View Transitions 主题切换动画 ---------- */
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2147483646; }
+html:not([data-theme="light"])::view-transition-old(root) { z-index: 2147483646; }
+html:not([data-theme="light"])::view-transition-new(root) { z-index: 1; }
+
+/* ---------- 浅色主题：工程制图纸 ---------- */
+[data-theme="light"] {
+  --bg0: #f3f0e8; --bg1: #ece9dd; --bg2: #e5e1d2; --bg3: #dcd7c5;
+  --line: #d7d1c0; --line2: #beb6a0;
+  --amber: #9c6805; --ok: #0d8f60; --ok-dim: #9fcfb4;
+  --err: #c24040; --info: #1e6fc0;
+  --text: #242830; --dim: #5d5847; --faint: #8d8672;
+  --wire-off: #c9c3b2;
+}
+[data-theme="light"] body {
+  background-image:
+    radial-gradient(ellipse 900px 420px at 50% -10%, rgba(156,104,5,.08), transparent 60%),
+    repeating-linear-gradient(0deg, transparent 0 39px, rgba(36,40,48,.05) 39px 40px),
+    repeating-linear-gradient(90deg, transparent 0 39px, rgba(36,40,48,.05) 39px 40px);
+}
+[data-theme="light"] ::selection { background: var(--amber); color: #fff; }
+[data-theme="light"] .bus { background: linear-gradient(180deg, rgba(156,104,5,.05), transparent 55%), var(--bg1); }
+[data-theme="light"] .cmd.active { background: rgba(156,104,5,.10); }
+[data-theme="light"] .card .adopt-flag { background: rgba(156,104,5,.09); border-color: rgba(156,104,5,.45); }
+[data-theme="light"] .card .adopt-flag:hover { background: rgba(156,104,5,.17); }
+[data-theme="light"] .dot.ok { box-shadow: 0 0 8px rgba(13,143,96,.45); }
+[data-theme="light"] .dot.warn { box-shadow: 0 0 8px rgba(156,104,5,.45); }
+[data-theme="light"] .toggle.on::after { box-shadow: 0 0 8px rgba(156,104,5,.4); }
+[data-theme="light"] .confirm-bar { background: rgba(156,104,5,.07); border-top-color: rgba(156,104,5,.4); }
+[data-theme="light"] .run-btn, [data-theme="light"] .confirm-bar button { color: #fff; }
+[data-theme="light"] .confirm-bar button.ghost { background: transparent; color: var(--amber); }
+[data-theme="light"] .t-line.cmdline, [data-theme="light"] .t-line.warn { color: #ffb224; }
+[data-theme="light"] .t-line.ok { color: #3ddc97; }
+[data-theme="light"] .t-line.err { color: #ff5d5d; }
+[data-theme="light"] .t-line.info { color: #6ab7ff; }
+[data-theme="light"] .cursor { background: #ffb224; }
+[data-theme="light"] .loglines .l:hover { color: #000; }
+
+@media (max-width: 980px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+  .console { grid-template-columns: 1fr; }
+  .cmd-pane { border-right: none; border-bottom: 1px solid var(--line); }
+  .bottom { grid-template-columns: 1fr; }
+  .meta { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <h1>AGENT<b>·</b>SYNC</h1>
+      <span class="sub">同步控制台</span>
+    </div>
+    <div class="meta">
+      <div><div class="k">技能源</div><div class="v amber" id="mSource">—</div></div>
+      <div><div class="k">上次备份</div><div class="v" id="mBackup">—</div></div>
+      <div><div class="k">定时任务</div><div class="v">每日 08:00</div></div>
+    </div>
+    <button class="theme-btn" id="themeBtn" title="切换深浅主题">☀</button>
+  </header>
+
+  <div class="healthbar" id="healthbar">
+    <div class="pulse"></div>
+    <div class="big" id="healthBig">加载中…</div>
+    <div class="health-stats" id="healthStats"></div>
+  </div>
+
+  <div class="bus">
+    <span class="tag">// 单源辐射拓扑 · 一处维护，处处生效</span>
+    <svg viewBox="0 0 1100 288" preserveAspectRatio="xMidYMid meet">
+      <rect class="svg-src" x="30" y="60" width="200" height="72" stroke-width="1.5"/>
+      <rect class="svg-src-strip" x="30" y="60" width="200" height="3"/>
+      <text class="src-label" x="46" y="88">~/.agents</text>
+      <text class="src-path" x="46" y="106">skills · rules</text>
+      <text class="src-path" x="46" y="121">SINGLE SOURCE</text>
+      <path class="wire" id="wire-claude" d="M230 96 C 400 96, 480 38, 660 38"/>
+      <path class="wire" id="wire-workbuddy" d="M230 96 C 400 96, 480 86, 660 86"/>
+      <path class="wire" id="wire-zcode" d="M230 96 C 400 96, 480 134, 660 134"/>
+      <path class="wire" id="wire-opencode" d="M230 96 C 400 96, 480 182, 660 182"/>
+      <path class="wire" id="wire-codex" d="M230 96 C 400 96, 480 230, 660 230"/>
+      <path class="wire" id="wire-trae" d="M230 96 C 400 96, 480 274, 660 274"/>
+      <g>
+        <rect class="svg-box" x="660" y="20" width="180" height="36"/>
+        <circle class="s-dot" id="dot-claude" cx="676" cy="38" r="4"/>
+        <text class="node-label" x="690" y="42">claude-code</text>
+        <text class="node-sub" id="sub-claude" x="852" y="42" text-anchor="end">…</text>
+      </g>
+      <g>
+        <rect class="svg-box" x="660" y="68" width="180" height="36"/>
+        <circle class="s-dot" id="dot-workbuddy" cx="676" cy="86" r="4"/>
+        <text class="node-label" x="690" y="90">workbuddy</text>
+        <text class="node-sub" id="sub-workbuddy" x="852" y="90" text-anchor="end">…</text>
+      </g>
+      <g>
+        <rect class="svg-box" x="660" y="116" width="180" height="36"/>
+        <circle class="s-dot" id="dot-zcode" cx="676" cy="134" r="4"/>
+        <text class="node-label" x="690" y="138">zcode</text>
+        <text class="node-sub" id="sub-zcode" x="852" y="138" text-anchor="end">…</text>
+      </g>
+      <g>
+        <rect class="svg-box" x="660" y="164" width="180" height="36"/>
+        <circle class="s-dot" id="dot-opencode" cx="676" cy="182" r="4"/>
+        <text class="node-label" x="690" y="186">opencode</text>
+        <text class="node-sub" id="sub-opencode" x="852" y="186" text-anchor="end">…</text>
+      </g>
+      <g>
+        <rect class="svg-box" x="660" y="212" width="180" height="36"/>
+        <circle class="s-dot" id="dot-codex" cx="676" cy="230" r="4"/>
+        <text class="node-label" x="690" y="234">codex</text>
+        <text class="node-sub" id="sub-codex" x="852" y="234" text-anchor="end">…</text>
+      </g>
+      <g id="traeGroup">
+        <rect class="svg-box" x="660" y="260" width="180" height="28"/>
+        <circle class="s-dot" id="dot-trae" cx="676" cy="274" r="4"/>
+        <text class="node-label" x="690" y="278">trae</text>
+        <text class="node-sub" id="sub-trae" x="852" y="278" text-anchor="end">…</text>
+      </g>
+      <circle class="f-amber" r="2.5">
+        <animateMotion dur="2.6s" repeatCount="indefinite" path="M230 96 C 400 96, 480 38, 660 38"/>
+      </circle>
+      <circle class="f-ok" r="2.5">
+        <animateMotion dur="3s" repeatCount="indefinite" path="M230 96 C 400 96, 480 86, 660 86"/>
+      </circle>
+      <circle class="f-ok" r="2.5">
+        <animateMotion dur="3.4s" repeatCount="indefinite" path="M230 96 C 400 96, 480 134, 660 134"/>
+      </circle>
+      <circle class="f-ok" r="2.5">
+        <animateMotion dur="3.8s" repeatCount="indefinite" path="M230 96 C 400 96, 480 182, 660 182"/>
+      </circle>
+      <circle class="f-ok" r="2.5">
+        <animateMotion dur="4.2s" repeatCount="indefinite" path="M230 96 C 400 96, 480 230, 660 230"/>
+      </circle>
+      <circle class="f-ok" r="2.5">
+        <animateMotion dur="4.6s" repeatCount="indefinite" path="M230 96 C 400 96, 480 274, 660 274"/>
+      </circle>
+      <text class="src-path" id="busSrc" x="130" y="155" text-anchor="middle">◉ 源</text>
+    </svg>
+  </div>
+
+  <div class="sec"><h2><i>01</i>AGENT 状态</h2><span class="note" id="statusNote">// 加载中</span></div>
+  <div class="grid" id="cards"></div>
+
+  <div class="sec"><h2><i>02</i>技能库</h2><span class="note" id="skillNote">// 加载中</span></div>
+  <div class="panel">
+    <input id="skillSearch" placeholder="搜索全部技能：名称 / 短简介 / 描述 / 触发词…" autocomplete="off">
+    <div class="skill-wrap">
+      <div class="cat-list" id="catList"></div>
+      <div class="skill-main">
+        <div class="p-label" id="skillPaneTitle" style="margin-top:0"></div>
+        <div class="skill-grid" id="skillGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec"><h2><i>03</i>操作台</h2><span class="note">// 预演先行 · 确认后才落盘</span></div>
+  <div class="console">
+    <div class="cmd-pane">
+      <div class="label">命令</div>
+      <div class="cmds">
+        <div class="cmd active" data-cmd="all"><span class="code">sync</span> all <span class="desc">执行全部</span></div>
+        <div class="cmd" data-cmd="links"><span class="code">sync</span> links <span class="desc">技能映射</span></div>
+        <div class="cmd" data-cmd="rules"><span class="code">sync</span> rules <span class="desc">规则注入</span></div>
+        <div class="cmd" data-cmd="memory"><span class="code">sync</span> memory <span class="desc">记忆下发</span></div>
+        <div class="cmd" data-cmd="mcp"><span class="code">sync</span> mcp <span class="desc">MCP 下发</span></div>
+        <div class="cmd" data-cmd="adopt"><span class="code">sync</span> adopt <span class="desc">收编巡检</span></div>
+        <div class="cmd" data-cmd="backup"><span class="code">backup</span> <span class="desc">镜像备份</span></div>
+      </div>
+      <div class="toggle-row">
+        <span class="t-label">--dry-run 预演模式</span>
+        <div class="toggle on" id="dryrun" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <button class="run-btn" id="runBtn">▶ 执 行</button>
+    </div>
+    <div class="term" id="term">
+      <div class="t-head">
+        <div class="dotset"><i></i><i></i><i></i></div>
+        <span class="t-title">OUTPUT · STREAM</span>
+      </div>
+      <div id="lines">
+        <div class="t-line dim">// 选择命令后点击执行 · 默认预演，不写盘</div>
+      </div>
+    </div>
+    <div class="confirm-bar" id="confirmBar">
+      <span class="txt" id="confirmTxt">✓ 预演完成</span>
+      <button class="ghost" onclick="hideConfirm()">放弃</button>
+      <button onclick="confirmRun()">确认正式执行</button>
+    </div>
+  </div>
+
+  <div class="sec"><h2><i>04</i>历史与记录</h2><span class="note">// sync-log.txt</span></div>
+  <div class="bottom">
+    <div class="panel">
+      <div class="p-label">运行心跳 · 近 30 天</div>
+      <div class="heartbeats" id="hb"></div>
+      <div class="hb-axis" id="hbAxis"><span></span><span></span><span>今天</span></div>
+    </div>
+    <div class="panel">
+      <div class="p-label">sync-log.txt · 尾部</div>
+      <div class="loglines" id="logList"><div class="l dim">加载中…</div></div>
+    </div>
+  </div>
+
+  <footer>
+    <span>agent-sync · local only · 127.0.0.1</span>
+    <span id="footInfo">源 ~/.agents</span>
+  </footer>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   AGENT-SYNC 面板 · 真数据版
+   数据契约：GET /api/status · GET /api/log · POST /api/run
+   ============================================================ */
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+let ST = null;            // /api/status 结果
+let running = false;
+let lastDryCmd = null;    // 最近一次预演的命令（确认条用）
+let currentCmd = 'all';
+
+/* ---------- 主题切换（View Transitions 圆形揭示） ---------- */
+const themeBtn = document.getElementById('themeBtn');
+function paintTheme(t) {
+  document.documentElement.dataset.theme = t;
+  themeBtn.textContent = t === 'light' ? '☾' : '☀';
+}
+function applyTheme(t, event) {
+  try { localStorage.setItem('as-theme', t); } catch (e) {}
+  if (!document.startViewTransition || !event) { paintTheme(t); return; }
+  const x = event.clientX, y = event.clientY;
+  const endRadius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  const goingLight = t === 'light';
+  const transition = document.startViewTransition(() => paintTheme(t));
+  transition.ready.then(() => {
+    document.documentElement.animate(
+      { clipPath: goingLight
+        ? [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`]
+        : [`circle(${endRadius}px at ${x}px ${y}px)`, `circle(0px at ${x}px ${y}px)`] },
+      { duration: 450, easing: 'ease-in', fill: 'both',
+        pseudoElement: goingLight ? '::view-transition-new(root)' : '::view-transition-old(root)' },
+    );
+  });
+}
+paintTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+themeBtn.addEventListener('click', (event) =>
+  applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light', event));
+
+/* ---------- 状态渲染 ---------- */
+function agentById(id) { return (ST.perAgent || []).find((a) => a.id === id); }
+function rulesOf(file) {
+  const acts = (ST.rules.actions || []).filter((a) => a.target && a.target.replace(/\\/g, '/').endsWith(file));
+  return { bad: acts.length, act: acts[0] };
+}
+function pendingCount() {
+  const links = (ST.conflicts || []).length + (ST.adoptCandidates || []).length;
+  return links + (ST.rules.actions || []).length + (ST.memory ? ST.memory.actions.length : 0);
+}
+function render() {
+  if (!ST || ST.error) return;
+  const per = ST.perAgent || [];
+  const pr = ST.projects || [];
+  const linkOk = per.reduce((n, a) => n + a.ok, 0) + pr.reduce((n, p) => n + p.ok, 0);
+  const linkTotal = per.reduce((n, a) => n + a.total, 0) + pr.reduce((n, p) => n + p.total, 0);
+  const rulesOk = ST.rules.ok || 0;
+  const rulesTotal = rulesOk + (ST.rules.actions || []).length;
+  const memOk = ST.memory ? ST.memory.ok : 0;
+  const memTotal = memOk + (ST.memory ? ST.memory.actions.length : 0);
+  const pending = pendingCount();
+  const backupOk = ST.backup && ST.backup.errors === 0;
+
+  // 健康条
+  const hb = $('#healthbar');
+  hb.classList.toggle('warn', pending > 0 || !backupOk);
+  $('#healthBig').innerHTML = pending === 0
+    ? `全部同步 ✓<em>链接 / 规则块 / 备份 无待处理项</em>`
+    : `${per.filter((a) => a.ok === a.total).length}/${per.length} 已接入 · ${pending} 处待处理` +
+      `<em>${(ST.conflicts || []).length} 冲突 · ${(ST.adoptCandidates || []).length} 待收编 · ${ST.rules.actions.length} 规则块待注入</em>`;
+  $('#healthStats').innerHTML =
+    `<div><span>技能源 </span><b class="ok">${ST.sourceCount}</b></div>` +
+    `<div><span>链接 </span><b class="${linkOk === linkTotal ? 'ok' : 'warn'}">${linkOk}/${linkTotal}</b></div>` +
+    `<div><span>规则块 </span><b class="${rulesOk === rulesTotal ? 'ok' : 'warn'}">${rulesOk}/${rulesTotal}</b></div>` +
+    `<div><span>记忆块 </span><b class="${memOk === memTotal ? 'ok' : 'warn'}">${memOk}/${memTotal}</b></div>` +
+    `<div><span>备份 </span><b class="${backupOk ? 'ok' : 'err'}">${ST.backup ? 'errors=' + ST.backup.errors : '—'}</b></div>`;
+
+  // 顶栏 + 总线
+  $('#mSource').textContent = ST.sourceCount + ' 技能';
+  $('#mBackup').textContent = ST.backup ? ST.backup.ts.slice(5, 16) + (backupOk ? ' ✓' : ' ✗') : '—';
+  $('#mBackup').className = 'v' + (backupOk ? '' : ' amber');
+  $('#busSrc').textContent = `◉ 源健康 · ${ST.sourceCount} skills`;
+  // junction 型 agent：按 perAgent 驱动（新接 agent 只要在 SVG 放好节点即自动更新）
+  for (const a of per) {
+    const sub = document.getElementById('sub-' + a.id);
+    if (!sub) continue;
+    const good = a.ok === a.total;
+    sub.textContent = `${a.ok}/${a.total} · ${good ? '✓' : '⚠'}`;
+    document.getElementById('dot-' + a.id)?.setAttribute('class', good ? 's-dot' : 's-dot-warn');
+    document.getElementById('wire-' + a.id)?.setAttribute('class', 'wire' + (good ? '' : ' warn'));
+  }
+  const zr = rulesOf('zcode/AGENTS.md');
+  $('#sub-zcode').textContent = `原生直读 · 规则 ${zr.bad ? '⚠' : '✓'}`;
+  $('#dot-zcode').setAttribute('class', zr.bad ? 's-dot-warn' : 's-dot');
+  $('#wire-zcode').setAttribute('class', 'wire' + (zr.bad ? ' warn' : ''));
+
+  // trae：原生直读源 + 项目级规则
+  $('#sub-trae').textContent = '原生直读 · ✓';
+  $('#dot-trae').setAttribute('class', 's-dot');
+  $('#wire-trae').setAttribute('class', 'wire');
+
+  // 卡片
+  $('#statusNote').textContent = `// 每 15s 轮询 · 上次 ${new Date().toLocaleTimeString('sv-SE').slice(0, 5)}`;
+  $('#cards').innerHTML = per.map((a) => {
+    const r = a.rulesFile ? rulesOf(a.rulesFile.replace(/\\/g, '/').split('/').slice(-2).join('/')) : { bad: 0 };
+    const good = a.ok === a.total;
+    const flags = [];
+    if (a.conflicts.length) flags.push(`<div class="adopt-flag" style="cursor:default">! 冲突实体 ×${a.conflicts.length} · ${esc(a.conflicts[0])}${a.conflicts.length > 1 ? ' 等' : ''}</div>`);
+    if (a.adopt.length) flags.push(`<div class="adopt-flag" onclick="runCmd('adopt')">⟳ 发现新技能 ×${a.adopt.length} · 点击收编</div>`);
+    return `<div class="card" onclick="runCmd('links')">
+      <div class="dot ${good ? 'ok' : 'warn'}"></div>
+      <div class="name">${a.id}</div>
+      <div class="path">${esc(a.dir || '')}</div>
+      <div class="row"><span>技能链接</span><b class="${good ? 'ok' : 'warn'}">${a.ok} / ${a.total}</b></div>
+      <div class="row"><span>规则块</span><b class="${r.bad ? 'warn' : 'ok'}">${a.rulesFile ? (r.bad ? '待注入' : '✓') : '—'}</b></div>
+      <div class="row"><span>收编待办</span><b class="${a.adopt.length ? 'warn' : 'ok'}">${a.adopt.length}</b></div>
+      ${flags.join('')}
+    </div>`;
+  }).join('') +
+  (() => {
+    const zr = rulesOf('zcode/AGENTS.md');
+    return `<div class="card" onclick="runCmd('rules')">
+      <div class="dot ${zr.bad ? 'warn' : 'ok'}"></div>
+      <div class="name">zcode</div>
+      <div class="path">~/.zcode · 原生直读源</div>
+      <div class="row"><span>技能链接</span><b class="ok">源即本体</b></div>
+      <div class="row"><span>规则块</span><b class="${zr.bad ? 'warn' : 'ok'}">${zr.bad ? '待注入' : '✓'}</b></div>
+      <div class="row"><span>收编待办</span><b class="ok">—</b></div>
+    </div>`;
+  })() +
+  `<div class="card" onclick="runCmd('rules')">
+      <div class="dot ok"></div>
+      <div class="name">trae</div>
+      <div class="path">原生直读 .agents/skills</div>
+      <div class="row"><span>技能</span><b class="ok">源即本体 ✓</b></div>
+      <div class="row"><span>规则块</span><b class="ok">✓</b></div>
+      <div class="row"><span>收编待办</span><b class="ok">—</b></div>
+    </div>`;
+  $('#footInfo').textContent = `源 ~/.agents · 备份 ${ST.backup ? ST.backup.mode : '—'} · 引擎 sync.mjs`;
+}
+
+/* ---------- 日志与心跳 ---------- */
+// 把引擎摘要行翻译成人话；原始行放进 title 悬浮可查
+function friendlyLog(l) {
+  const m = l.match(/^\[([^\]]+)\]\s*(.*)$/);
+  if (!m) return null;
+  const rest = m[2];
+  const g = (k) => Number((rest.match(new RegExp(k + '=(\\d+)')) || [])[1] || 0);
+  const dry = rest.includes('mode=dry-run');
+  let text = null;
+  if (rest.startsWith('mode=')) {
+    text = '每日备份：新增/更新 ' + g('copied') + ' 个文件，其余 ' + g('skipped') + ' 无变化' +
+           (rest.includes('mode=mirror') ? '（镜像模式）' : '');
+  } else if (rest.includes('sync links')) {
+    text = '技能映射：' + g('ok') + ' 条链接完整' +
+           (g('created') ? '，新建 ' + g('created') : '') +
+           (g('conflict') ? '，⚠ ' + g('conflict') + ' 处冲突待处理' : '') +
+           (g('adopt') ? '，' + g('adopt') + ' 个新技能待收编' : '');
+  } else if (rest.includes('sync rules')) {
+    text = '规则注入：' + g('ok') + ' 处一致' + (g('created') ? '，写入/修复 ' + g('created') + ' 处' : '');
+  } else if (rest.includes('sync adopt')) {
+    text = '技能收编：移入源 ' + g('created') + ' 个' + (g('adopt') ? '，发现 ' + g('adopt') + ' 个候选' : '');
+  } else if (rest.includes('sync memory')) {
+    text = '记忆下发：' + g('ok') + ' 处一致' + (g('created') ? '，写入 ' + g('created') + ' 处' : '');
+  } else if (rest.includes('sync mcp')) {
+    text = 'MCP 下发：' + g('ok') + ' 处一致' + (g('created') ? '，安装 ' + g('created') + ' 个' : '');
+  } else if (rest.includes('sync check')) {
+    text = '一致性巡检完成';
+  }
+  if (!text) return null;
+  const errs = g('errors');
+  if (dry) text += '（预演未写盘）';
+  if (errs > 0) text += '，' + errs + ' 个错误';
+  return { ts: m[1], text, errs, dry, raw: l };
+}
+function renderLog() {
+  const tail = ST.logTail || [];
+  $('#logList').innerHTML = tail.map((l) => {
+    const f = friendlyLog(l);
+    if (!f) return `<div class="l dim" title="${esc(l)}">${esc(l)}</div>`;
+    const cls = f.errs > 0 ? 'err' : f.dry ? 'dim' : 'ok';
+    return `<div class="l ${cls}" title="${esc(f.raw)}"><span class="ts">${esc(f.ts.slice(5, 16))}</span>${esc(f.text)}</div>`;
+  }).join('');
+  const days = ST.days || [];
+  $('#hb').innerHTML = days.map((d) =>
+    `<div class="hb ${d.s}"><span class="tip">${d.label}</span></div>`).join('');
+  const first = days[0];
+  if (first) $('#hbAxis').firstElementChild.textContent = first.label.slice(0, 6).replace('/', '月') + '日';
+}
+
+/* ---------- 技能库：左分类右技能主从布局 ---------- */
+let selectedCat = null; // 缺省 = 第一个分类
+function renderSkills() {
+  const listEl = $('#catList'), grid = $('#skillGrid');
+  if (!grid || !listEl) return;
+  const skills = ST.skills || [];
+  $('#skillNote').textContent = `// 源目录 ${skills.length} 个技能 · 悬浮卡片看完整描述`;
+  const q = ($('#skillSearch').value || '').trim().toLowerCase();
+  const match = (s) => !q || (s.name + ' ' + (s.short || '') + ' ' + s.desc + ' ' + (s.cat || '')).toLowerCase().includes(q);
+  const groups = new Map();
+  for (const s of skills) {
+    const cat = s.cat || '未分类';
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat).push(s);
+  }
+  const cats = [...groups.keys()];
+  if (!selectedCat || !groups.has(selectedCat)) selectedCat = cats[0];
+  listEl.innerHTML = cats.map((cat) =>
+    `<div class="cat-item${cat === selectedCat && !q ? ' active' : ''}" data-cat="${esc(cat)}">
+      <span>${esc(cat)}</span><span class="n">${groups.get(cat).length}</span>
+    </div>`).join('');
+  const card = (s) => `<div class="skill" title="${esc(s.desc)}">
+      <b>${esc(s.name)}</b><span class="tag">${esc(s.tag || s.cat || '通用')}</span>
+      <span class="short">${esc(s.short || '（无短简介）')}</span>
+      <span class="desc">${esc(s.desc || '（无描述）')}</span>
+    </div>`;
+  if (q) {
+    const hits = skills.filter(match);
+    $('#skillPaneTitle').textContent = `搜索结果 · ${hits.length} 个`;
+    grid.innerHTML = hits.map(card).join('') || '<div class="l dim">没有匹配的技能</div>';
+  } else {
+    const list = groups.get(selectedCat) || [];
+    $('#skillPaneTitle').textContent = `${selectedCat} · ${list.length} 个技能`;
+    grid.innerHTML = list.map(card).join('');
+  }
+}
+$('#skillSearch')?.addEventListener('input', () => ST && renderSkills());
+$('#catList')?.addEventListener('click', (e) => {
+  const item = e.target.closest('.cat-item');
+  if (!item) return;
+  selectedCat = item.dataset.cat;
+  $('#skillSearch').value = '';
+  renderSkills();
+});
+
+/* ---------- 数据获取 ---------- */
+async function refresh() {
+  try {
+    ST = await (await fetch('/api/status')).json();
+    render(); renderLog(); renderSkills();
+  } catch (e) {
+    $('#healthBig').textContent = '无法连接本地服务（server.mjs 未运行?）';
+  }
+}
+
+/* ---------- 命令执行（流式） ---------- */
+function clsOf(s) {
+  const t = s.trim();
+  if (t.startsWith('✓')) return 'ok';
+  if (t[0] === '!' || t.startsWith('FATAL')) return 'err';
+  if (t.startsWith('~') || t.startsWith('?') || t.includes('⚠')) return 'warn';
+  if (t.startsWith('+') || t.startsWith('  ✓') || t.includes('→') && t.includes('✓')) return 'info';
+  if (t.startsWith('[') || t.startsWith('//') || t.startsWith('——')) return 'dim';
+  return '';
+}
+function addLine(cls, text) {
+  const ts = new Date().toTimeString().slice(0, 8);
+  $('#lines').insertAdjacentHTML('beforeend',
+    `<div class="t-line ${cls}"><span class="ts">${ts}</span>${esc(text)}</div>`);
+  $('#term').scrollTop = $('#term').scrollHeight;
+}
+async function run(cmd, dry) {
+  if (running) return;
+  running = true;
+  hideConfirm();
+  $('#runBtn').disabled = true;
+  $('#lines').innerHTML = '';
+  addLine('cmdline', `agent-sync ${cmd}${dry ? ' --dry-run' : ''}${cmd === 'adopt' && !dry ? ' --yes' : ''}`);
+  try {
+    const res = await fetch('/api/run', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cmd, dryRun: !!dry }),
+    });
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (!line) continue;
+        try {
+          const ev = JSON.parse(line);
+          if (ev.t === 'line') addLine(clsOf(ev.s), ev.s);
+          if (ev.t === 'done') addLine(ev.code === 0 ? 'dim' : 'err', `── 退出码 ${ev.code} ──`);
+        } catch {}
+      }
+    }
+  } catch (e) {
+    addLine('err', '请求失败：' + e.message);
+  }
+  $('#lines').querySelector('.cursor')?.remove();
+  running = false;
+  $('#runBtn').disabled = false;
+  if (dry) {
+    lastDryCmd = cmd;
+    $('#confirmTxt').textContent = `✓ 预演完成 · ${cmd} 待确认落盘`;
+    $('#confirmBar').classList.add('show');
+  } else {
+    toast(`✓ ${cmd} 执行完成 · 已写入 sync-log.txt`);
+  }
+  refresh();
+}
+function runCmd(cmd) {
+  document.querySelectorAll('.cmd').forEach((c) => c.classList.toggle('active', c.dataset.cmd === cmd));
+  currentCmd = cmd;
+  run(cmd, $('#dryrun').classList.contains('on'));
+}
+function confirmRun() {
+  if (!lastDryCmd) return;
+  $('#dryrun').classList.remove('on');
+  const cmd = lastDryCmd;
+  lastDryCmd = null;
+  run(cmd, false);
+  $('#dryrun').classList.add('on');
+}
+function hideConfirm() { $('#confirmBar').classList.remove('show'); }
+document.querySelectorAll('.cmd').forEach((el) =>
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.cmd').forEach((c) => c.classList.remove('active'));
+    el.classList.add('active');
+    currentCmd = el.dataset.cmd;
+  }));
+$('#runBtn').addEventListener('click', () => run(currentCmd, $('#dryrun').classList.contains('on')));
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>

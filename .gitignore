@@ -1,0 +1,28 @@
+# 个人数据与各 agent 目录（junction 目标 / 备份副本，绝不开源）
+backups/
+claudecode/
+codex/
+global-agents/
+workbuddy/
+zcode/
+trae/
+trae-cn/
+sync-log.txt
+MANIFEST.md
+
+# 依赖
+node_modules/
+
+# 构建产物（build/ 里只保留脚本）
+dist/
+build/*.exe
+build/sea-prep.blob
+agent-sync.exe
+tauri-app/src-tauri/target/
+tauri-app/src-tauri/gen/
+tauri-app/src-tauri/binaries/
+
+# 运行杂项
+*.log
+Thumbs.db
+.DS_Store
