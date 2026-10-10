@@ -307,7 +307,7 @@ const IMG_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)$/i;
 async function mdViewerExe() {
   const candidates = [
     CONFIG.mdviewer,
-    'D:\\md-viewer\\MD阅览_v1.1.exe',
+    'D:\\md-viewer\\MD阅览.exe',
     'D:\\md-viewer\\src-tauri\\target\\release\\md-viewer.exe',
   ].filter(Boolean);
   for (const c of candidates) {

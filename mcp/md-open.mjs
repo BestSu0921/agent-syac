@@ -13,7 +13,7 @@ import path from 'node:path';
 
 const PANEL = 'http://127.0.0.1:7717';
 const EXE_CANDIDATES = [
-  'D:\\md-viewer\\MD阅览_v1.1.exe',
+  'D:\\md-viewer\\MD阅览.exe',
   'D:\\md-viewer\\src-tauri\\target\\release\\md-viewer.exe',
 ];
 
