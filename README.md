@@ -82,11 +82,18 @@ npx agent-sync check       # 一致性巡检
 
 配套 MCP 工具 `md-open`（`mcp/md-open.mjs`，零依赖单文件）：提供 `open_md`（弹出独立窗口）与 `preview_md`（返回预览链接）两个工具，模板在 `~/.agents/mcp/md-open.json`，注册后各 Agent 对话式打开文档。
 
-## 从源码构建 exe
+## 从源码构建桌面应用（Tauri）
 
 ```bash
-node build/build-exe.mjs   # 产出 build/agent-sync.exe（Node ≥ 22；postject 首次需联网）
-node build/pack.mjs        # 打包纯工具文件到 dist/agent-sync/（不含个人数据）
+cd tauri-app
+npm install            # @tauri-apps/cli（预编译，快）
+npx tauri build        # 需 Rust 工具链（rustup + MSVC）；产物在 src-tauri/target/release/
+```
+
+桌面壳职责：原生窗口 + 系统托盘 + 单实例 + 拉起 node 服务（系统 node，免打包 sidecar）。
+
+```bash
+node build/pack.mjs    # 打包纯工具文件到 dist/agent-sync/（不含个人数据）
 ```
 
 ## 设计约定（重要）

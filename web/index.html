@@ -257,6 +257,13 @@ header {
 .hb-axis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--faint); }
 .loglines { font-family: var(--mono); font-size: 11.5px; line-height: 2; }
 /* ---------- 技能库：左分类右技能的主从布局，两侧限高滚动 ---------- */
+#skillSearch {
+  width: 100%; margin-bottom: 14px; padding: 9px 14px;
+  background: var(--bg0); border: 1px solid var(--line); color: var(--text);
+  font-family: var(--mono); font-size: 12.5px; border-radius: 2px;
+}
+#skillSearch::placeholder { color: var(--faint); }
+#skillSearch:focus { outline: none; border-color: var(--amber); background: var(--bg1); }
 .skill-wrap { display: grid; grid-template-columns: 230px 1fr; gap: 14px; align-items: start; }
 .cat-list { border: 1px solid var(--line); background: var(--bg1); max-height: 430px; overflow-y: auto; }
 .cat-item {
@@ -273,8 +280,8 @@ header {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 8px;
   max-height: 430px; overflow-y: auto; padding: 2px 6px 2px 0;
 }
-.skill { border: 1px solid var(--line); background: var(--bg2); padding: 8px 11px; transition: border-color .2s; }
-.skill:hover { border-color: var(--line2); }
+.skill { border: 1px solid var(--line); background: var(--bg2); padding: 8px 11px; transition: border-color .2s; cursor: pointer; }
+.skill:hover { border-color: var(--amber); }
 .skill b { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--amber); }
 .skill .tag {
   display: inline-block; margin-left: 7px; padding: 0 6px; font-size: 10px;
@@ -285,6 +292,46 @@ header {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   font-size: 10.5px; color: var(--faint); line-height: 1.5; margin-top: 2px;
 }
+
+/* ---------- 技能详情弹窗 ---------- */
+.modal-mask { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, .64); z-index: 90; }
+.modal-mask.show { display: flex; align-items: flex-start; justify-content: center; padding: 5vh 20px; }
+.modal {
+  width: 780px; max-width: 94vw; max-height: 86vh; display: flex; flex-direction: column;
+  background: var(--bg1); border: 1px solid var(--line2); box-shadow: 0 24px 80px rgba(0, 0, 0, .55);
+}
+.modal-head { display: flex; align-items: center; gap: 10px; padding: 15px 20px 12px; border-bottom: 1px solid var(--line); }
+.modal-head b { font-family: var(--mono); font-size: 16px; color: var(--amber); }
+.m-tag { padding: 0 7px; font-size: 10.5px; color: var(--amber); border: 1px solid var(--amber-dim); }
+.modal-x {
+  margin-left: auto; background: none; border: 1px solid var(--line); color: var(--dim);
+  width: 28px; height: 28px; cursor: pointer; font-size: 13px; line-height: 1;
+}
+.modal-x:hover { border-color: var(--line2); color: var(--text); }
+.modal-meta {
+  padding: 10px 20px; border-bottom: 1px solid var(--line);
+  font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+  display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+}
+.modal-meta .m-short { color: var(--text); }
+.modal-body { padding: 14px 20px 20px; overflow-y: auto; font-size: 13px; line-height: 1.85; color: var(--text); }
+.modal-body h1, .modal-body h2, .modal-body h3, .modal-body h4 {
+  font-family: var(--disp); margin: 16px 0 6px; color: var(--text); line-height: 1.4;
+}
+.modal-body h1 { font-size: 16px; }
+.modal-body h2 { font-size: 14.5px; color: var(--amber); }
+.modal-body h3, .modal-body h4 { font-size: 13px; }
+.modal-body p { margin: 6px 0; }
+.modal-body ul { margin: 6px 0; padding-left: 4px; list-style: none; }
+.modal-body li { margin: 3px 0; padding-left: 14px; position: relative; }
+.modal-body li::before { content: '·'; position: absolute; left: 2px; color: var(--amber); font-weight: 700; }
+.modal-body code { font-family: var(--mono); font-size: 11.5px; background: var(--bg3); padding: 1px 5px; color: var(--amber); }
+.modal-body pre { background: #07080a; border: 1px solid var(--line); padding: 10px 12px; overflow-x: auto; margin: 8px 0; }
+.modal-body pre code { background: none; color: var(--ok); padding: 0; white-space: pre; }
+.modal-body hr { border: none; border-top: 1px solid var(--line); margin: 12px 0; }
+.modal-body blockquote { border-left: 3px solid var(--amber-dim); margin: 8px 0; padding: 2px 12px; color: var(--dim); }
+.modal-body b { color: var(--text); }
+.modal-foot { padding: 9px 20px 13px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 11px; color: var(--faint); }
 .loglines .l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .loglines .l:hover { color: #fff; }
 .loglines .ok { color: var(--ok); } .loglines .warn { color: var(--amber); }
@@ -518,6 +565,18 @@ html:not([data-theme="light"])::view-transition-new(root) { z-index: 1; }
   </footer>
 </div>
 
+<div class="modal-mask" id="skillModalMask" onclick="if (event.target === this) closeSkillModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <b id="smName">—</b><span class="m-tag" id="smTag"></span>
+      <button class="modal-x" onclick="closeSkillModal()">✕</button>
+    </div>
+    <div class="modal-meta" id="smMeta"></div>
+    <div class="modal-body" id="smBody"></div>
+    <div class="modal-foot" id="smFoot"></div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -730,7 +789,7 @@ function renderSkills() {
     `<div class="cat-item${cat === selectedCat && !q ? ' active' : ''}" data-cat="${esc(cat)}">
       <span>${esc(cat)}</span><span class="n">${groups.get(cat).length}</span>
     </div>`).join('');
-  const card = (s) => `<div class="skill" title="${esc(s.desc)}">
+  const card = (s) => `<div class="skill" title="点击查看详情 · ${esc(s.desc)}" onclick="openSkill('${esc(s.name)}')">
       <b>${esc(s.name)}</b><span class="tag">${esc(s.tag || s.cat || '通用')}</span>
       <span class="short">${esc(s.short || '（无短简介）')}</span>
       <span class="desc">${esc(s.desc || '（无描述）')}</span>
@@ -746,6 +805,58 @@ function renderSkills() {
   }
 }
 $('#skillSearch')?.addEventListener('input', () => ST && renderSkills());
+$('#catList')?.addEventListener('click', (e) => {
+  const item = e.target.closest('.cat-item');
+  if (!item) return;
+  selectedCat = item.dataset.cat;
+  $('#skillSearch').value = '';
+  renderSkills();
+});
+
+/* ---------- 技能详情弹窗 ---------- */
+// 迷你 Markdown 渲染：标题/列表/粗体/行内码/代码块/引用/分隔线（够用就好）
+function mdInline(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+}
+function mdRender(md) {
+  let html = '';
+  let inCode = false;
+  for (const line of md.split('\n')) {
+    if (/^```/.test(line)) { html += inCode ? '</code></pre>' : '<pre><code>'; inCode = !inCode; continue; }
+    if (inCode) { html += mdInline(line) + '\n'; continue; }
+    const h = line.match(/^(#{1,4})\s+(.*)/);
+    if (h) { html += `<h${h[1].length}>${mdInline(h[2])}</h${h[1].length}>`; continue; }
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) { html += '<hr>'; continue; }
+    if (/^>\s?/.test(line)) { html += `<blockquote>${mdInline(line.replace(/^>\s?/, ''))}</blockquote>`; continue; }
+    const li = line.match(/^\s*(?:[-*+]|\d+[.、])\s+(.*)/);
+    if (li) { html += `<li>${mdInline(li[1])}</li>`; continue; }
+    if (!line.trim()) { html += '<div style="height:6px"></div>'; continue; }
+    html += `<p>${mdInline(line)}</p>`;
+  }
+  if (inCode) html += '</code></pre>';
+  return html;
+}
+async function openSkill(name) {
+  if (!name) return;
+  try {
+    const d = await (await fetch('/api/skill?name=' + encodeURIComponent(name))).json();
+    if (d.error) { toast(d.error); return; }
+    $('#smName').textContent = d.name;
+    $('#smTag').textContent = d.tag || d.cat || '';
+    $('#smMeta').innerHTML =
+      `<span>分类 ${esc(d.cat)}</span>` +
+      `<span class="m-short">${esc(d.short || '')}</span>` +
+      `<span>触发词与用法见下方正文</span>`;
+    $('#smBody').innerHTML = mdRender((d.desc ? d.desc + '\n\n' : '') + (d.body || '（该技能没有 SKILL.md 正文）'));
+    $('#smFoot').textContent = `源 ${d.dir}/SKILL.md · Esc 关闭`;
+    $('#skillModalMask').classList.add('show');
+  } catch (e) { toast('加载失败: ' + e.message); }
+}
+function closeSkillModal() { $('#skillModalMask').classList.remove('show'); }
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSkillModal(); });
 $('#catList')?.addEventListener('click', (e) => {
   const item = e.target.closest('.cat-item');
   if (!item) return;

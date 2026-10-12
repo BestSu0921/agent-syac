@@ -22,6 +22,9 @@ tauri-app/src-tauri/target/
 tauri-app/src-tauri/gen/
 tauri-app/src-tauri/binaries/
 
+# Tauri 资源（prepare.mjs 生成，不入库）
+tauri-app/src-tauri/resources/
+
 # 运行杂项
 *.log
 Thumbs.db
