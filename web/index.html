@@ -858,6 +858,58 @@ $('#catList')?.addEventListener('click', (e) => {
   renderSkills();
 });
 
+/* ---------- 技能详情弹窗 ---------- */
+// 迷你 Markdown 渲染：标题/列表/粗体/行内码/代码块/引用/分隔线（够用就好）
+function mdInline(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+}
+function mdRender(md) {
+  let html = '';
+  let inCode = false;
+  for (const line of md.split('\n')) {
+    if (/^```/.test(line)) { html += inCode ? '</code></pre>' : '<pre><code>'; inCode = !inCode; continue; }
+    if (inCode) { html += mdInline(line) + '\n'; continue; }
+    const h = line.match(/^(#{1,4})\s+(.*)/);
+    if (h) { html += `<h${h[1].length}>${mdInline(h[2])}</h${h[1].length}>`; continue; }
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) { html += '<hr>'; continue; }
+    if (/^>\s?/.test(line)) { html += `<blockquote>${mdInline(line.replace(/^>\s?/, ''))}</blockquote>`; continue; }
+    const li = line.match(/^\s*(?:[-*+]|\d+[.、])\s+(.*)/);
+    if (li) { html += `<li>${mdInline(li[1])}</li>`; continue; }
+    if (!line.trim()) { html += '<div style="height:6px"></div>'; continue; }
+    html += `<p>${mdInline(line)}</p>`;
+  }
+  if (inCode) html += '</code></pre>';
+  return html;
+}
+async function openSkill(name) {
+  if (!name) return;
+  try {
+    const d = await (await fetch('/api/skill?name=' + encodeURIComponent(name))).json();
+    if (d.error) { toast(d.error); return; }
+    $('#smName').textContent = d.name;
+    $('#smTag').textContent = d.tag || d.cat || '';
+    $('#smMeta').innerHTML =
+      `<span>分类 ${esc(d.cat)}</span>` +
+      `<span class="m-short">${esc(d.short || '')}</span>` +
+      `<span>触发词与用法见下方正文</span>`;
+    $('#smBody').innerHTML = mdRender((d.desc ? d.desc + '\n\n' : '') + (d.body || '（该技能没有 SKILL.md 正文）'));
+    $('#smFoot').textContent = `源 ${d.dir}/SKILL.md · Esc 关闭`;
+    $('#skillModalMask').classList.add('show');
+  } catch (e) { toast('加载失败: ' + e.message); }
+}
+function closeSkillModal() { $('#skillModalMask').classList.remove('show'); }
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSkillModal(); });
+$('#catList')?.addEventListener('click', (e) => {
+  const item = e.target.closest('.cat-item');
+  if (!item) return;
+  selectedCat = item.dataset.cat;
+  $('#skillSearch').value = '';
+  renderSkills();
+});
+
 /* ---------- 数据获取 ---------- */
 async function refresh() {
   try {
