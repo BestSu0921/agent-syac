@@ -21,7 +21,21 @@ const FILES = [
   'backup-agents.mjs',
   'package.json',
   'web/index.html',
+  'web/logo.png',
+  'web/mdview.html',
   'README.md',
+  // Tauri 桌面壳源码（构建产物 target/、binaries/、resources/ 由 .gitignore 排除）
+  'tauri-app/package.json',
+  'tauri-app/prepare.mjs',
+  'tauri-app/src-tauri/Cargo.toml',
+  'tauri-app/src-tauri/build.rs',
+  'tauri-app/src-tauri/tauri.conf.json',
+  'tauri-app/src-tauri/src/main.rs',
+  'tauri-app/src-tauri/icons/icon.ico',
+  'tauri-app/src-tauri/icons/32x32.png',
+  'tauri-app/src-tauri/icons/128x128.png',
+  'tauri-app/src-tauri/icons/128x128@2x.png',
+  'tauri-app/src-tauri/icons/icon.png',
 ];
 
 // dist 已是 git 仓库：绝不整目录删除（保 .git），只覆盖工具文件并清掉运行产物
@@ -36,7 +50,16 @@ for (const f of FILES) {
 for (const junk of ['sync-log.txt', 'MANIFEST.md']) {
   await fs.rm(path.join(DIST, junk), { force: true });
 }
-await fs.writeFile(path.join(DIST, '.gitignore'), 'sync-log.txt\nMANIFEST.md\nbackups/\n');
+await fs.writeFile(path.join(DIST, '.gitignore'), [
+  'sync-log.txt',
+  'MANIFEST.md',
+  'backups/',
+  'node_modules/',
+  'src-tauri/target/',
+  'src-tauri/binaries/',
+  'src-tauri/resources/',
+  '*.exe',
+].join('\n') + '\n');
 console.log(`[pack] 已拷贝 ${FILES.length} 个文件 → ${DIST}`);
 
 // 独立运行验证（check 是只读的）

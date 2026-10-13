@@ -37,21 +37,51 @@ const INDEX = path.join(APP_ROOT, 'web', 'index.html');
 const LOG_FILE = path.join(BACKUP_ROOT, 'sync-log.txt');
 const ALLOW = ['links', 'rules', 'adopt', 'memory', 'mcp', 'backup', 'all'];
 
+// 技能目录（分类/短标签/细分标签），源 = ~/.agents/skills/catalog.json
+async function loadCatalog() {
+  try { return JSON.parse(await fs.readFile(path.join(HOME, '.agents', 'skills', 'catalog.json'), 'utf8')); }
+  catch { return {}; }
+}
+function catalogMeta(catalog) {
+  const meta = new Map();
+  for (const [cat, items] of Object.entries(catalog || {})) {
+    for (const [name, item] of Object.entries(items || {})) {
+      const o = typeof item === 'string' ? { short: item } : item;
+      meta.set(name, { cat, short: o.short || '', tag: o.tag || '通用' });
+    }
+  }
+  return meta;
+}
+
+// 单个技能的完整详情（详情弹窗用）：frontmatter 描述 + 正文 + 目录元数据
+async function getSkillDetail(name) {
+  const dir = path.join(HOME, '.agents', 'skills', name);
+  let raw;
+  try {
+    raw = (await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8')).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+  } catch { return null; }
+  const fm = raw.match(/^---\n([\s\S]*?)\n---/)?.[1] || '';
+  let desc = '';
+  let dm = fm.match(/^description:\s*(["'])([\s\S]*?)\1\s*$/m);
+  if (!dm) {
+    const block = fm.match(/^description:\s*\|[^\n]*\n((?:[ \t]+.*\n?)*)/m);
+    if (block) dm = [, , block[1].replace(/^[ \t]+/gm, '').replace(/\s+/g, ' ').trim()];
+  }
+  if (!dm) dm = fm.match(/^description:\s*(.+)$/m);
+  if (dm) desc = (dm[2] || dm[1]).trim();
+  const fmAll = raw.match(/^---\n[\s\S]*?\n---\n?/);
+  const body = raw.slice(fmAll ? fmAll[0].length : 0).trim();
+  const m = catalogMeta(await loadCatalog()).get(name);
+  return { name, desc, body, cat: m?.cat || '未分类', short: m?.short || desc.slice(0, 20), tag: m?.tag || '通用', dir: dir.replace(HOME, '~') };
+}
+
 // 技能库：源目录各技能的 name + SKILL.md 描述，合并 catalog.json 的分类与短标签
 async function getSkills() {
   const out = [];
   let entries = [];
   const skillsBase = path.join(HOME, '.agents', 'skills');
   try { entries = await fs.readdir(skillsBase, { withFileTypes: true }); } catch { return out; }
-  let catalog = {};
-  try { catalog = JSON.parse(await fs.readFile(path.join(skillsBase, 'catalog.json'), 'utf8')); } catch { /* 无目录数据则全部未分类 */ }
-  const meta = new Map();
-  for (const [cat, items] of Object.entries(catalog)) {
-    for (const [name, item] of Object.entries(items || {})) {
-      const o = typeof item === 'string' ? { short: item } : item;
-      meta.set(name, { cat, short: o.short || '', tag: o.tag || '通用' });
-    }
-  }
+  const meta = catalogMeta(await loadCatalog());
   for (const e of entries) {
     if (e.name === 'README.md' || e.name.startsWith('.') || e.name === 'catalog.json') continue;
     const dir = path.join(skillsBase, e.name);
@@ -159,6 +189,15 @@ const server = http.createServer(async (req, res) => {
     if (url === '/logo.png' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'image/png' });
       res.end(await fs.readFile(path.join(APP_ROOT, 'web', 'logo.png')));
+      return;
+    }
+    if (url === '/api/skill' && req.method === 'GET') {
+      const name = decodeURIComponent((req.url.split('?')[1] || '').replace(/^name=/, ''));
+      if (!/^[\w.-]+$/.test(name) || name.startsWith('.')) { res.writeHead(400); res.end('bad name'); return; }
+      const d = await getSkillDetail(name);
+      if (!d) { res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: '技能不存在: ' + name })); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(d));
       return;
     }
     if (url === '/api/status' && req.method === 'GET') {
@@ -307,7 +346,7 @@ const IMG_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)$/i;
 async function mdViewerExe() {
   const candidates = [
     CONFIG.mdviewer,
-    'D:\\md-viewer\\MD阅览_v1.1.exe',
+    'D:\\md-viewer\\MD阅览.exe',
     'D:\\md-viewer\\src-tauri\\target\\release\\md-viewer.exe',
   ].filter(Boolean);
   for (const c of candidates) {
