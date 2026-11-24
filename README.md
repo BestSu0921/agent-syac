@@ -10,6 +10,7 @@
      ▼                                  ▼
 claude · workbuddy · opencode · codex
 zcode · trae（原生直读源，无需映射）
+antigravity（@引用源文件，即时生效）
      │
      ▼  定时/手动镜像备份
 backupRoot（配置任意盘符目录）
@@ -25,6 +26,7 @@ backupRoot（配置任意盘符目录）
 | Codex | ✓ junction | ✓ | `~/.codex`（config.toml 一并备份） |
 | ZCode | 原生直读源 | ✓ | 无需映射 |
 | Trae | 原生直读源 | 项目级 `.trae/rules/` | 需开启「启用 .agents 技能目录」；规则按项目清单注入，MCP 按模板下发 |
+| Antigravity（Google） | 引用模式 | ✓ `@` 引用 | `~/.gemini/GEMINI.md` 用 `@[名称](路径)` 直接引用 rules/memory 源文件，改源即时生效，无需同步命令 |
 
 新增 agent：在 `sync.mjs` 顶部 `AGENTS` 矩阵加一行（junction 型给目录，直读型 `skills: null`）。`check` 会提示已安装但未纳入矩阵的 agent（如 Cursor）。
 
