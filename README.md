@@ -5,10 +5,11 @@
 全局通用技能、规则块、共享记忆维护在 `~/.agents/`，用链接或标记块分发；项目专属技能只维护在各项目 `.agents/skills/`，随项目共享，不分发到全局发现目录。两类技能均按其唯一源备份。
 
 ```
-~/.agents/                    ← 唯一源（skills · rules · memory）
+~/.agents/                    ← 唯一源（skills · rules · memory · mcp 模板）
      │ junction 映射                     │ 块注入
      ▼                                  ▼
-claude · workbuddy · zcode(原生直读) · trae(项目级 .trae/skills)
+claude · workbuddy · opencode · codex
+zcode · trae（原生直读源，无需映射）
      │
      ▼  定时/手动镜像备份
 backupRoot（配置任意盘符目录）
@@ -19,9 +20,13 @@ backupRoot（配置任意盘符目录）
 | agent | 技能 | 规则块 | 说明 |
 |---|---|---|---|
 | Claude Code | ✓ junction | ✓ 标记块注入 | `~/.claude` |
-| WorkBuddy | ✓ junction | ✓ | `~/.workbuddy` |
+| WorkBuddy | ✓ junction | ✓ | `~/.workbuddy`（规则注入 SOUL.md） |
+| OpenCode | ✓ junction | ✓ | `~/.config/opencode` |
+| Codex | ✓ junction | ✓ | `~/.codex`（config.toml 一并备份） |
 | ZCode | 原生直读源 | ✓ | 无需映射 |
-| Trae | ✓ 项目级（`.trae/skills`） | — | Trae 技能为项目级，按项目清单映射 |
+| Trae | 原生直读源 | 项目级 `.trae/rules/` | 需开启「启用 .agents 技能目录」；规则按项目清单注入，MCP 按模板下发 |
+
+新增 agent：在 `sync.mjs` 顶部 `AGENTS` 矩阵加一行（junction 型给目录，直读型 `skills: null`）。`check` 会提示已安装但未纳入矩阵的 agent（如 Cursor）。
 
 Skill 目录采用 Anthropic `SKILL.md` 格式（Trae 等多家兼容）；规则/记忆用标记块幂等注入（`<!-- synced-rule:名 start … end -->`），重复运行零副作用。
 
@@ -32,8 +37,8 @@ Skill 目录采用 Anthropic `SKILL.md` 格式（Trae 等多家兼容）；规�
 npx agent-sync init        # 引导：探测 agent + 写配置
 npx agent-sync check       # 一致性巡检
 
-# 方式二：单文件 exe（免装 node）
-# 下载 agent-sync.exe，双击即启动可视化面板
+# 方式二：桌面应用（Tauri 原生窗口 + 系统托盘）
+# 见下文「从源码构建桌面应用」，构建产物双击即用（自带 node sidecar）
 ```
 
 ## 命令
@@ -46,6 +51,7 @@ npx agent-sync check       # 一致性巡检
 | `agent-sync links` | 技能映射：源 → 各 agent 目录 + 各 trae 项目 |
 | `agent-sync rules` | 同步共享规则块及全局、项目和插件的技能调用规则，支持预演和写前备份 |
 | `agent-sync memory` | 记忆层下发（`~/.agents/memory/` → 各 agent） |
+| `agent-sync mcp` | MCP 模板下发（`~/.agents/mcp/` → 各项目 `.mcp.json`，只补缺失不覆盖项目已有） |
 | `agent-sync adopt` | 收编：agent 目录里的新装技能 → 移入源 + 补链接 |
 | `agent-sync backup` | 增量镜像备份到备份根（`--mirror` 严格清理慎用） |
 
