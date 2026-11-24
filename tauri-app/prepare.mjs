@@ -9,6 +9,8 @@ const S = path.join(HERE, 'src-tauri');
 
 await fs.copyFile(path.join(BACKUP_ROOT, 'server.mjs'), path.join(S, 'resources', 'server.mjs'));
 await fs.copyFile(path.join(BACKUP_ROOT, 'sync.mjs'), path.join(S, 'resources', 'sync.mjs'));
+await fs.copyFile(path.join(BACKUP_ROOT, 'project-skills.mjs'), path.join(S, 'resources', 'project-skills.mjs'));
+await fs.copyFile(path.join(BACKUP_ROOT, 'plugin-rules.mjs'), path.join(S, 'resources', 'plugin-rules.mjs'));
 await fs.copyFile(path.join(BACKUP_ROOT, 'backup-agents.mjs'), path.join(S, 'resources', 'backup-agents.mjs'));
 await fs.copyFile(path.join(BACKUP_ROOT, 'web', 'index.html'), path.join(S, 'resources', 'web', 'index.html'));
 await fs.copyFile(path.join(BACKUP_ROOT, 'web', 'mdview.html'), path.join(S, 'resources', 'web', 'mdview.html'));

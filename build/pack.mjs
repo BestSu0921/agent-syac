@@ -17,6 +17,8 @@ const DIST = path.join(ROOT, 'dist', 'agent-sync');
 const FILES = [
   'cli.mjs',
   'sync.mjs',
+  'project-skills.mjs',
+  'plugin-rules.mjs',
   'server.mjs',
   'backup-agents.mjs',
   'package.json',

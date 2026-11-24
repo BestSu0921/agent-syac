@@ -92,7 +92,7 @@ async function cmdInit() {
       console.log('  agent-sync init         首次引导');
       console.log('  agent-sync panel        打开可视化面板');
       console.log('  agent-sync links        技能映射（含 trae 项目级）');
-      console.log('  agent-sync rules        规则块注入');
+      console.log('  agent-sync rules        同步规则块与技能调用规则（--routing-only 仅调用规则；--plugins-only 仅插件）');
       console.log('  agent-sync memory       记忆层下发');
       console.log('  agent-sync mcp          项目 MCP 配置下发');
       console.log('  agent-sync adopt        收编新装技能');

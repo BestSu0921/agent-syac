@@ -9,6 +9,8 @@
   "files": [
     "cli.mjs",
     "sync.mjs",
+    "project-skills.mjs",
+    "plugin-rules.mjs",
     "server.mjs",
     "backup-agents.mjs",
     "web/index.html",

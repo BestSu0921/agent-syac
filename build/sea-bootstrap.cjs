@@ -11,7 +11,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-const ASSETS = ['server.mjs', 'sync.mjs', 'backup-agents.mjs', 'web/index.html'];
+const ASSETS = ['server.mjs', 'sync.mjs', 'project-skills.mjs', 'plugin-rules.mjs', 'backup-agents.mjs', 'web/index.html'];
 
 const arg1 = process.argv[1] || '';
 if (arg1.endsWith('.mjs') && fs.existsSync(arg1)) {

@@ -161,6 +161,7 @@ async function getStatus(force = false) {
     rules: { ok: rules.ok || 0, actions: rules.actions || [], errors: rules.errors || [] },
     memory: { ok: memory.ok || 0, actions: memory.actions || [], errors: memory.errors || [] },
     projects: links.projects || [],
+    projectSkills: links.projectSkills || [],
     backup: bm.length ? { ts: bm[1], mode: bm[2].replace('mode=', ''), errors: Number(bm[3]) } : null,
     logTail: summaries.slice(0, 30),
     days: heartbeat(summaries),

@@ -27,6 +27,8 @@ const seaConfig = {
   assets: {
     'server.mjs': '../server.mjs',
     'sync.mjs': '../sync.mjs',
+    'project-skills.mjs': '../project-skills.mjs',
+    'plugin-rules.mjs': '../plugin-rules.mjs',
     'backup-agents.mjs': '../backup-agents.mjs',
     'web/index.html': '../web/index.html',
   },

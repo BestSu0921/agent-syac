@@ -29,8 +29,12 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline/promises';
+import { readProjectSkills, projectSkillNames } from './project-skills.mjs';
+import { syncRoutingRules } from './plugin-rules.mjs';
 
 const HOME = os.homedir();
+const PROJECT_SKILLS = await readProjectSkills(HOME);
+const PROJECT_SKILL_NAMES = projectSkillNames(PROJECT_SKILLS);
 // 备份/日志根：读 ~/.agents/sync.config.json 的 backupRoot，缺省 = 脚本所在目录
 const CONFIG = await fs.readFile(path.join(HOME, '.agents', 'sync.config.json'), 'utf8').then(JSON.parse).catch(() => ({}));
 const BACKUP_ROOT = CONFIG.backupRoot || path.dirname(fileURLToPath(import.meta.url));
@@ -84,7 +88,7 @@ const MEMORY = {
 // ============================================================
 // 小工具
 // ============================================================
-const result = { cmd, dryRun, ok: 0, created: 0, recreated: 0, removed: 0, conflicts: [], adoptCandidates: [], perAgent: [], projects: [], actions: [], errors: [] };
+const result = { cmd, dryRun, ok: 0, created: 0, recreated: 0, removed: 0, conflicts: [], adoptCandidates: [], perAgent: [], projects: [], projectSkills: [], actions: [], errors: [] };
 
 const out = (msg) => { if (!jsonOut) console.log(msg); };
 const isDir = async (p) => { try { return (await fs.stat(p)).isDirectory(); } catch { return false; } };
@@ -94,6 +98,7 @@ async function sourceSkills() {
   const names = [];
   for (const e of await fs.readdir(SOURCE_SKILLS, { withFileTypes: true })) {
     if (e.name === 'README.md' || e.name.startsWith('.')) continue; // README 与隐藏目录（如 .golive-owned）不是技能
+    if (PROJECT_SKILL_NAMES.has(e.name)) continue;
     // isDir 会跟随链接（源里 golive 本身是工具自管的符号链接，照常纳入）
     if (await isDir(path.join(SOURCE_SKILLS, e.name))) names.push(e.name);
   }
@@ -108,7 +113,7 @@ function makeJunction(target, linkPath) {
 async function scanAgent(agent, sources) {
   const srcSet = new Set(sources);
   const r = { missing: [], broken: [], conflict: [], adopt: [], dangling: [] };
-  await fs.mkdir(agent.skills, { recursive: true });
+  if (!dryRun) await fs.mkdir(agent.skills, { recursive: true });
   for (const name of sources) {
     const p = path.join(agent.skills, name);
     const st = await lstat(p);
@@ -120,9 +125,13 @@ async function scanAgent(agent, sources) {
     if (st.isDirectory()) { r.conflict.push(name); continue; }
     // 文件（如 workbuddy 的迁移标记 json）：忽略
   }
-  const entries = await fs.readdir(agent.skills, { withFileTypes: true });
+  const entries = await fs.readdir(agent.skills, { withFileTypes: true }).catch((error) => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
   for (const e of entries) {
     if (e.name.startsWith('.')) continue; // 点前缀（如 codex 的 .system 系统技能）不属于收编范围
+    if (PROJECT_SKILL_NAMES.has(e.name)) continue; // 项目归属由登记表约束，不收编或隐式删除
     if (e.isSymbolicLink() && !srcSet.has(e.name)) r.dangling.push(e.name);
     if (!e.isDirectory() || e.isSymbolicLink()) continue;
     if (!srcSet.has(e.name)) r.adopt.push(e.name);
@@ -134,6 +143,23 @@ async function scanAgent(agent, sources) {
 // links：技能映射
 // ============================================================
 async function cmdLinks() {
+  for (const project of PROJECT_SKILLS) {
+    const status = { id: project.id, dir: project.dir, present: [], missing: [], globalDuplicates: [], agentCopies: [] };
+    for (const name of project.skills) {
+      const source = path.join(project.dir, '.agents', 'skills', name, 'SKILL.md');
+      const exists = await fs.stat(source).then((s) => s.isFile()).catch(() => false);
+      (exists ? status.present : status.missing).push(name);
+      if (await lstat(path.join(SOURCE_SKILLS, name))) status.globalDuplicates.push(name);
+      for (const agent of AGENTS) {
+        if (agent.skills && await lstat(path.join(agent.skills, name))) status.agentCopies.push({ agent: agent.id, skill: name });
+      }
+    }
+    result.projectSkills.push(status);
+    for (const name of status.missing) result.errors.push(`project ${project.id}/${name}: 源不可读`);
+    for (const name of status.globalDuplicates) result.errors.push(`project ${project.id}/${name}: 全局同名副本需人工处理`);
+    for (const copy of status.agentCopies) result.errors.push(`project ${project.id}/${copy.skill}: ${copy.agent}全局目录残留，需人工处理`);
+    out(`项目技能 ${project.id}: ${status.present.length}/${project.skills.length}可读，全局副本${status.globalDuplicates.length}，agent残留${status.agentCopies.length}`);
+  }
   const sources = await sourceSkills();
   for (const agent of AGENTS) {
     if (!agent.skills) {
@@ -242,123 +268,186 @@ async function cmdAdopt() {
 // ============================================================
 // rules：规则块注入（幂等）
 // ============================================================
-const startMarker = (name) => `<!-- synced-rule:${name} start（源：~/.agents/rules/${name}.md，勿在块内手工改动）-->`;
-const endMarker = (name) => `<!-- synced-rule:${name} end -->`;
+// 规则和记忆共用同一组边界。每个源文件只拥有同名的一对标记。
+const GLOBAL_RULE_FILES = [...AGENTS.map(agent => agent.rules),
+  path.join(HOME, '.dsh', 'AGENTS.md'), path.join(HOME, '.trae-cn', 'user_rules.md')];
 
-// 块正文 = 源文件去掉头部说明（到第一个 --- 为止）
 function ruleBody(raw) {
-  const idx = raw.indexOf('\n---\n');
-  return (idx === -1 ? raw : raw.slice(idx + 5)).trim();
+  const text = raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+  const separator = text.indexOf('\n---\n');
+  return (separator === -1 ? text : text.slice(separator + 5)).trim();
 }
 
-function ruleTargets(raw) {
-  // 保留原始 token（~ 和 @trae-projects 由 cmdRules 展开）
-  return raw.match(/<!--\s*sync-targets:\s*([^>]+?)\s*-->/)?.[1].split(/\s+/) || [];
+function declaredTargets(raw, field) {
+  const header = raw.split(/\r?\n---\r?\n/, 1)[0];
+  const declaration = header.match(new RegExp('<!--\\s*' + field + ':\\s*([^>]*?)\\s*-->'));
+  return declaration?.[1].trim().split(/\s+/).filter(Boolean) || [];
 }
 
-const md5 = (s) => crypto.createHash('md5').update(s).digest('hex');
+function expandTargets(tokens) {
+  const targets = new Map();
+  function add(file, label, optional = false, create = false) {
+    const key = process.platform === 'win32' ? path.resolve(file).toLowerCase() : path.resolve(file);
+    const previous = targets.get(key);
+    targets.set(key, {file, label, optional:previous ? previous.optional && optional : optional, create});
+  }
+  for (const token of tokens) {
+    if (token === '@global') {
+      for (const file of GLOBAL_RULE_FILES) add(file, '~/' + path.relative(HOME, file).split(path.sep).join('/'), true);
+    } else if (token.startsWith('@trae-projects:')) {
+      const fname = token.slice('@trae-projects:'.length);
+      for (const project of PROJECTS) add(path.join(project.dir, '.trae','rules',fname), 'trae:' + project.id, false, true);
+    } else {
+      if (token.startsWith('@')) throw new Error('未知的目标分组 ' + token);
+      add(token.replace(/^~(?=[\\/])/, HOME), token);
+    }
+  }
+  return targets;
+}
+
+function managedRange(content, kind, name) {
+  const markers = /^<!--[ \t]*(synced-rule|synced-memory):([^\s<>]+)[ \t]+(start|end)(?=[ \t（(]|-->)[^\r\n]*?-->[ \t]*(?=\r?$)/gm;
+  const offset = content.startsWith('\uFEFF') ? 1 : 0;
+  let open = null;
+  let found = null;
+  for (const m of content.slice(offset).matchAll(markers)) {
+    const [, family, id, side] = m;
+    if (side === 'start') {
+      if (open) throw new Error('同步块嵌套或缺结束标记：' + open.id);
+      open = {family, id, start:m.index + offset};
+    } else {
+      if (!open || open.family !== family || open.id !== id) throw new Error('同步块标记不匹配：' + id);
+      if (family === 'synced-' + kind && id === name) {
+        if (found) throw new Error('同步块重名：' + name);
+        found = {start:open.start, end:m.index + m[0].length + offset};
+      }
+      open = null;
+    }
+  }
+  if (open) throw new Error('同步块缺结束标记：' + open.id);
+  return found;
+}
+
+async function syncBlock(target, kind, name, body, reference = false) {
+  const {file, label} = target;
+  let content = '';
+  let existing = true;
+  try { content = await fs.readFile(file,'utf8'); }
+  catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+    if (target.optional || reference) return;
+    if (!target.create) throw new Error('目标文件不存在');
+    existing = false;
+  }
+  const range = managedRange(content, kind, name);
+  if (reference && !range) { result.ok++; return; }
+  const domain = kind === 'rule' ? 'rules' : 'memory';
+  const tag = 'synced-' + kind + ':' + name;
+  const expected = '<!-- ' + tag + ' start（源：~/.agents/' + domain + '/' + name + '.md，勿在块内手工改动）-->\n' + body + '\n<!-- ' + tag + ' end -->';
+  const same = range && content.slice(range.start,range.end).replace(/\r\n/g,'\n') === expected;
+  if (reference && !same) throw new Error('按需块的内容与源不同，已保留现场');
+  if (!reference && same) { result.ok++; return; }
+
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const block = expected.replace(/\n/g, eol);
+  let next;
+  let action;
+  if (reference) {
+    const suffix = content.slice(range.end).replace(/^(?:\r?\n){1,2}/, '');
+    next = content.slice(0,range.start) + suffix;
+    action = 'remove';
+  } else if (range) {
+    next = content.slice(0,range.start) + block + content.slice(range.end);
+    action = 'replace';
+  } else {
+    const gap = !content || content.endsWith(eol + eol) ? '' : content.endsWith(eol) ? eol : eol + eol;
+    next = content + gap + block + eol;
+    action = 'append';
+  }
+  // 先验证合成结果；新增规则的正文也不能截断其他块。
+  managedRange(next, kind, name);
+  result.actions.push(kind === 'rule' ? {type:domain+'-'+action, rule:name, target:label} :
+    {type:domain+'-'+action, cat:name, target:file});
+  out('  ' + action + ' · ' + name + ' → ' + label);
+  if (!dryRun) {
+    await fs.mkdir(path.dirname(file), {recursive:true});
+    const real = existing ? await fs.realpath(file) : file;
+    const tmp = real + '.' + crypto.randomUUID() + '.tmp';
+    try {
+      await fs.writeFile(tmp, next, {flag:'wx', mode:existing ? (await fs.stat(real)).mode : 0o600});
+      if (existing) {
+        const signature = crypto.createHash('sha256').update(real).update('\0').update(content).digest('hex').slice(0,20);
+        const bak = path.join(RULES_BACKUP, domain + '-' + new Date().toISOString().slice(0,10), signature + '-' + path.basename(real));
+        await fs.mkdir(path.dirname(bak), {recursive:true});
+        await fs.writeFile(bak, content);
+        if (await fs.readFile(real, 'utf8') !== content) throw new Error('写入前文件已变化，请重新同步');
+        await fs.rename(tmp, real);
+      } else {
+        await fs.copyFile(tmp, real, fs.constants.COPYFILE_EXCL);
+      }
+    } finally { await fs.rm(tmp, {force:true}); }
+  }
+  if (reference) result.removed++; else result.created++;
+}
 
 async function cmdRules() {
-  const files = (await fs.readdir(SOURCE_RULES)).filter((f) => f.endsWith('.md'));
+  try {
+    await syncRoutingRules({home:HOME, dryRun, backups:path.join(RULES_BACKUP,'plugin-rules'), result, out, pluginsOnly:process.argv.includes('--plugins-only')});
+  } catch (e) { result.errors.push('技能调用规则：' + e.message); }
+  if (process.argv.includes('--plugins-only') || process.argv.includes('--routing-only')) return;
+  const files = (await fs.readdir(SOURCE_RULES)).filter(f => f.endsWith('.md'));
   for (const file of files) {
-    const name = file.replace(/\.md$/, '');
-    const raw = await fs.readFile(path.join(SOURCE_RULES, file), 'utf8');
-    const body = ruleBody(raw);
-    const targetTokens = ruleTargets(raw);
-    if (!targetTokens.length) { result.errors.push(`${name}: 头部缺 sync-targets 声明，跳过`); continue; }
-
-    const re = new RegExp(`<!--\\s*synced-rule:${name} start[\\s\\S]*?synced-rule:${name} end\\s*-->`);
-    // 目标展开：~ 开头 = home 相对；@trae-projects:<文件名> = PROJECTS 各项目的 .trae/rules/<文件名>
-    const targets = [];
-    for (const t of targetTokens) {
-      if (t.startsWith('@trae-projects:')) {
-        const fname = t.slice('@trae-projects:'.length);
-        for (const p of PROJECTS) targets.push({ path: path.join(p.dir, '.trae', 'rules', fname), label: `trae:${p.id}` });
-      } else {
-        targets.push({ path: t.replace(/^~/, HOME), label: t });
+    const name = file.slice(0,-3);
+    try {
+      const raw = await fs.readFile(path.join(SOURCE_RULES,file),'utf8');
+      const included = expandTargets(declaredTargets(raw,'sync-targets'));
+      const references = expandTargets(declaredTargets(raw,'reference-targets'));
+      if (!included.size && !references.size) throw new Error('头部缺同步目标声明');
+      for (const key of references.keys()) if (included.has(key)) throw new Error('同一目标同时声明注入和按需引用');
+      const body = ruleBody(raw);
+      for (const [key, target] of [...included, ...references]) {
+        try { await syncBlock(target, 'rule', name, body, references.has(key)); }
+        catch (e) { result.errors.push(name + ' → ' + target.label + ': ' + e.message); }
       }
-    }
-    out(`\n[${name}] 块正文 ${body.split('\n').length} 行 · 目标 ${targets.length} 处`);
-    if (!targets.length) { result.errors.push(`${name}: 头部缺 sync-targets 声明，跳过`); continue; }
-
-    for (const { path: target, label } of targets) {
-      let content = null;
-      try { content = await fs.readFile(target, 'utf8'); }
-      catch {
-        // trae 项目规则文件允许新建；其余目标缺文件直接报错
-        if (!label.startsWith('trae:')) { result.errors.push(`${name} → ${label}: 目标文件不存在`); continue; }
-      }
-
-      const matched = content && content.match(re);
-      const replaceWith = `${startMarker(name)}\n${body}\n${endMarker(name)}\n`;
-      if (matched) {
-        const same = md5(matched[0].replace(/\r\n/g, '\n').trimEnd()) === md5(replaceWith.trimEnd());
-        if (same) { out(`  ✓ 一致 · ${label}`); result.ok++; continue; }
-        result.actions.push({ type: 'rules-replace', rule: name, target: label });
-        out(`  ~ 块有漂移 → 替换 · ${label}`);
-        if (!dryRun) {
-          await fs.mkdir(path.join(RULES_BACKUP, `rules-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`), { recursive: true });
-          const bak = path.join(RULES_BACKUP, `rules-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`, path.basename(target));
-          await fs.copyFile(target, bak);
-          await fs.writeFile(target, content.replace(re, replaceWith.trimEnd()), 'utf8');
-        }
-        result.created++;
-      } else {
-        // trae 项目规则文件可以新建；其余目标缺文件已在上面的 catch 报错
-        result.actions.push({ type: 'rules-append', rule: name, target: label });
-        out(`  + ${content === null ? '新建文件' : '缺块 → 末尾追加'} · ${label}`);
-        if (!dryRun) {
-          await fs.mkdir(path.dirname(target), { recursive: true });
-          await fs.writeFile(target, (content ? content.trimEnd() + '\n\n' : '') + replaceWith, 'utf8');
-        }
-        result.created++;
-      }
-    }
+    } catch (e) { result.errors.push(name + ': ' + e.message); }
   }
 }
 
-// ============================================================
-// memory：记忆共享层下发（块注入，幂等；正文为空的源跳过）
-// ============================================================
-const memStart = (cat) => `<!-- synced-memory:${cat} start（源：~/.agents/memory/${cat}.md，勿在块内手工改动）-->`;
-const memEnd = (cat) => `<!-- synced-memory:${cat} end -->`;
-const stamp = () => new Date().toISOString().slice(0, 10).replace(/-/g, '');
+// rules 和 memory 改的是同一批文件。写入者先登记自己的 PID，其他进程退让后再重读。
+async function withDocumentWriter(work) {
+  if (dryRun) return work();
+  const dir = path.join(HOME, '.agents', '.document-writers');
+  const own = String(process.pid);
+  const marker = path.join(dir, own);
+  await fs.mkdir(dir, {recursive:true});
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    await fs.writeFile(marker, '');
+    try {
+      const busy = (await fs.readdir(dir)).some(name => {
+        if (name === own || !/^\d+$/.test(name)) return false;
+        try { process.kill(Number(name), 0); return true; }
+        catch (e) { return e.code !== 'ESRCH'; }
+      });
+      if (!busy) return await work();
+    } finally { await fs.rm(marker, {force:true}); }
+    await new Promise(done => setTimeout(done, 40 + Math.random() * 80));
+  }
+  result.errors.push('另一个规则或记忆同步仍在写入，请稍后重试');
+}
 
 async function cmdMemory() {
   for (const cat of MEMORY.categories) {
     let raw;
-    try { raw = await fs.readFile(path.join(MEMORY_DIR, cat + '.md'), 'utf8'); }
-    catch { out(`\n[${cat}] 源文件不存在，跳过`); continue; }
-    // 正文 = 分隔线之后的内容；空正文（仅注释/空白）不注入，避免污染目标文件
-    const body = ruleBody(raw).replace(/<!--[\s\S]*?-->/g, '').trim();
-    if (!body) { out(`\n[${cat}] 源为空 → 跳过注入`); continue; }
-    out(`\n[${cat}] 正文 ${body.split('\n').length} 行 · 目标 ${MEMORY.targets.length} 处`);
-    const re = new RegExp(`<!--\\s*synced-memory:${cat} start[\\s\\S]*?synced-memory:${cat} end\\s*-->`);
-    for (const target of MEMORY.targets) {
-      let content;
-      try { content = await fs.readFile(target, 'utf8'); }
-      catch { result.errors.push(`memory/${cat} → ${target}: 目标文件不存在`); continue; }
-      const replaceWith = `${memStart(cat)}\n${body}\n${memEnd(cat)}\n`;
-      const matched = content.match(re);
-      if (matched) {
-        if (md5(matched[0].replace(/\r\n/g, '\n').trimEnd()) === md5(replaceWith.trimEnd())) {
-          out(`  ✓ 一致 · ${target.replace(HOME, '~')}`); result.ok++; continue;
-        }
-        result.actions.push({ type: 'memory-replace', cat, target });
-        out(`  ~ 块有漂移 → 替换 · ${target.replace(HOME, '~')}`);
-        if (!dryRun) {
-          const bakDir = path.join(RULES_BACKUP, `memory-${stamp()}`);
-          await fs.mkdir(bakDir, { recursive: true });
-          await fs.copyFile(target, path.join(bakDir, path.basename(target)));
-          await fs.writeFile(target, content.replace(re, replaceWith.trimEnd()), 'utf8');
-        }
-        result.created++;
-      } else {
-        result.actions.push({ type: 'memory-append', cat, target });
-        out(`  + 缺块 → 末尾追加 · ${target.replace(HOME, '~')}`);
-        if (!dryRun) await fs.writeFile(target, content.trimEnd() + '\n\n' + replaceWith, 'utf8');
-        result.created++;
-      }
+    try { raw = await fs.readFile(path.join(MEMORY_DIR,cat+'.md'),'utf8'); }
+    catch (e) { if (e.code === 'ENOENT') continue; throw e; }
+    const body = ruleBody(raw).replace(/<!--[\s\S]*?-->/g,'').trim();
+    if (!body) continue;
+    const tokens = declaredTargets(raw, 'sync-targets');
+    const targets = expandTargets(tokens.length ? tokens : MEMORY.targets);
+    for (const target of targets.values()) {
+      try { await syncBlock(target,'memory',cat,body); }
+      catch (e) { result.errors.push('memory/' + cat + ' → ' + target.label + ': ' + e.message); }
     }
   }
 }
@@ -445,8 +534,8 @@ async function cmdCheck() {
 
   const linkOk = per.reduce((n, a) => n + a.ok, 0) + projects.reduce((n, p) => n + p.ok, 0);
   const linkTotal = per.reduce((n, a) => n + a.total, 0) + projects.reduce((n, p) => n + p.total, 0);
-  let pending = (links.conflicts || []).length + (links.adoptCandidates || []).length +
-                  (rules.actions || []).length + (memory.actions || []).length;
+  let pending = (links.errors || []).length + (links.conflicts || []).length + (links.adoptCandidates || []).length +
+                  (rules.actions || []).length + (rules.errors || []).length + (memory.actions || []).length + (memory.errors || []).length;
 
   out(`技能源     ${sourceNames.size} 个`);
   for (const a of per) {
@@ -457,8 +546,10 @@ async function cmdCheck() {
   for (const p of projects) {
     out(`  trae:${p.id.padEnd(20)} 链接 ${p.ok}/${p.total}${p.conflicts.length ? ' · 项目专属实体 ' + p.conflicts.length : ''}`);
   }
-  out(`规则块     ${rules.ok || 0} 一致 / ${(rules.actions || []).length} 待注入`);
+  out(`规则       ${rules.ok || 0} 一致 / ${(rules.actions || []).length} 待同步 / ${(rules.errors || []).length} 异常`);
+  for (const error of rules.errors || []) out('  ! ' + error);
   out(`记忆块     ${memory.ok || 0} 一致 / ${(memory.actions || []).length} 待注入`);
+  for (const error of memory.errors || []) out('  ! ' + error);
   out(`链接合计   ${linkOk}/${linkTotal}`);
 
   // bundle 依赖检查：技能依赖看源，MCP 依赖看各声明项目的 .mcp.json
@@ -505,6 +596,7 @@ async function cmdCheck() {
 
   pending += bundlePending;
   out(pending === 0 ? '\n✓ 全部一致，无待处理项' : `\n⚠ ${pending} 项待处理 · 建议顺序：links → adopt → rules → memory`);
+  result.projectSkills = links.projectSkills || [];
   result.check = { links, rules, memory, bundles, linkOk, linkTotal, pending };
 }
 
@@ -518,8 +610,8 @@ async function main() {
   }
   if (cmd === 'links') await cmdLinks();
   if (cmd === 'adopt') await cmdAdopt();
-  if (cmd === 'rules') await cmdRules();
-  if (cmd === 'memory') await cmdMemory();
+  if (cmd === 'rules') await withDocumentWriter(cmdRules);
+  if (cmd === 'memory') await withDocumentWriter(cmdMemory);
   if (cmd === 'mcp') await cmdMcp();
   if (cmd === 'check') await cmdCheck();
 

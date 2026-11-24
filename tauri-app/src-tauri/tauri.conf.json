@@ -19,6 +19,8 @@
     "resources": [
       "resources/server.mjs",
       "resources/sync.mjs",
+      "resources/project-skills.mjs",
+      "resources/plugin-rules.mjs",
       "resources/backup-agents.mjs",
       "resources/web/index.html",
       "resources/web/mdview.html",

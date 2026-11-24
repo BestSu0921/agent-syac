@@ -23,8 +23,11 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readProjectSkills, projectSkillNames, projectSkillSources, recordProjectSkills } from './project-skills.mjs';
 
 const HOME = os.homedir(); // C:\Users\admin
+const PROJECT_SKILLS = await readProjectSkills(HOME);
+const PROJECT_SKILL_NAMES = projectSkillNames(PROJECT_SKILLS);
 // 备份根：读 ~/.agents/sync.config.json 的 backupRoot，缺省 = 脚本所在目录（兼容本机 D:\ai-agent-backup）
 const CONFIG = await fs.readFile(path.join(HOME, '.agents', 'sync.config.json'), 'utf8').then(JSON.parse).catch(() => ({}));
 const BACKUP_ROOT = CONFIG.backupRoot || path.dirname(fileURLToPath(import.meta.url));
@@ -41,12 +44,17 @@ const mirror = process.argv.includes('--mirror');
 //   ignore: 可选，basename 匹配（'node_modules'）或后缀（'*.db-wal'）或路径片段
 // ============================================================
 const SOURCES = [
+  ...projectSkillSources(PROJECT_SKILLS),
+  ...(PROJECT_SKILLS.length ? [{ name: 'project-skills-registry', type: 'file', src: path.join(HOME, '.agents', 'project-skills.json'), dest: 'global-agents/project-skills.json' }] : []),
   // ---------- 全局技能中心（所有 agent 共享的技能源，必须优先备份）----------
   { name: 'global-agents-skills', type: 'dir', src: path.join(HOME, '.agents', 'skills'), dest: 'global-agents/skills', ignore: ['node_modules'] },
   { name: 'global-agents-rules', type: 'dir', src: path.join(HOME, '.agents', 'rules'), dest: 'global-agents/rules' },
   { name: 'global-agents-memory', type: 'dir', src: path.join(HOME, '.agents', 'memory'), dest: 'global-agents/memory' },
   { name: 'global-agents-mcp', type: 'dir', src: path.join(HOME, '.agents', 'mcp'), dest: 'global-agents/mcp' },
   { name: 'codex-AGENTS', type: 'file', src: path.join(HOME, '.codex', 'AGENTS.md'), dest: 'codex/AGENTS.md' },
+  { name: 'codex-config', type: 'file', src: path.join(HOME, '.codex', 'config.toml'), dest: 'codex/config.toml' },
+  { name: 'antigravity-GEMINI', type: 'file', src: path.join(HOME, '.gemini', 'GEMINI.md'), dest: 'antigravity/GEMINI.md' },
+  { name: 'codex-worker', type: 'file', src: path.join(HOME, '.agents', 'scripts', 'codex-worker.py'), dest: 'global-agents/scripts/codex-worker.py' },
 
   // ---------- WorkBuddy ----------
   { name: 'workbuddy-MEMORY', type: 'file', src: path.join(HOME, '.workbuddy', 'MEMORY.md'), dest: 'workbuddy/MEMORY.md' },
@@ -97,12 +105,14 @@ function shouldIgnore(name, full, ignore) {
 
 function relToRoot(p) { return path.relative(BACKUP_ROOT, p).replace(/\\/g, '/'); }
 
-async function copyFile(src, dest, stats) {
-  await fs.mkdir(path.dirname(dest), { recursive: true });
+async function copyFile(src, dest, stats, compareContent = false) {
+  if (!dryRun) await fs.mkdir(path.dirname(dest), { recursive: true });
   let need = true;
   try {
     const [s, d] = await Promise.all([fs.stat(src), fs.stat(dest)]);
-    if (d.mtimeMs >= s.mtimeMs) need = false;
+    if (compareContent) {
+      need = s.size !== d.size || !(await fs.readFile(src)).equals(await fs.readFile(dest));
+    } else if (d.mtimeMs >= s.mtimeMs) need = false;
   } catch { /* 目标不存在 -> 需要复制 */ }
   if (need) {
     if (!dryRun) await fs.copyFile(src, dest);
@@ -113,11 +123,12 @@ async function copyFile(src, dest, stats) {
   }
 }
 
-async function copyDir(src, dest, ignore, stats) {
+async function copyDir(src, dest, ignore, stats, compareContent = false) {
   const entries = await fs.readdir(src, { withFileTypes: true });
   for (const e of entries) {
     const s = path.join(src, e.name);
     const d = path.join(dest, e.name);
+    if (path.basename(src) === 'skills' && PROJECT_SKILL_NAMES.has(e.name)) { stats.ignored++; continue; }
     if (shouldIgnore(e.name, s, ignore)) { stats.ignored++; continue; }
     // 跟随符号链接：各 agent 的 skills 目录大量用 symlink 指向全局中心
     // (.agents/skills)，不 follow 会静默跳过、导致技能内容漏备份。
@@ -131,9 +142,9 @@ async function copyDir(src, dest, ignore, stats) {
       } catch { stats.ignored++; continue; }
     }
     if (isDir) {
-      await copyDir(s, d, ignore, stats);
+      await copyDir(s, d, ignore, stats, compareContent);
     } else if (isFile) {
-      await copyFile(s, d, stats);
+      await copyFile(s, d, stats, compareContent);
     }
   }
 }
@@ -167,7 +178,7 @@ async function backupOne(item, stats) {
       await copyFile(item.src, dest, stats);
     } else {
       if (!st.isDirectory()) throw new Error('src 不是目录: ' + item.src);
-      await copyDir(item.src, dest, item.ignore, stats);
+      await copyDir(item.src, dest, item.ignore, stats, item.compareContent);
       if (mirror) await pruneMirror(item.src, dest, item.ignore, stats);
     }
     stats.ok.push(item.name);
@@ -177,10 +188,13 @@ async function backupOne(item, stats) {
 }
 
 async function main() {
-  await fs.mkdir(BACKUP_ROOT, { recursive: true });
+  if (!dryRun) await fs.mkdir(BACKUP_ROOT, { recursive: true });
+  // 软件清单不自动刷新（全量注册表扫描耗资源）；需要时手动跑：node software-list.mjs
   const stats = { copied: 0, skipped: 0, ignored: 0, pruned: 0, ok: [], errors: [], copiedList: [], prunedList: [] };
   // 本地时间（toISOString 是 UTC，会与用户手动执行时间差 8 小时对不上）
   const ts = new Date().toLocaleString('sv-SE', { hour12: false }).replace('T', ' ');
+
+  if (!dryRun) await recordProjectSkills(HOME, PROJECT_SKILLS);
 
   for (const item of SOURCES) await backupOne(item, stats);
 
@@ -211,6 +225,7 @@ async function main() {
   if (stats.copiedList.length) { console.log('复制:'); stats.copiedList.forEach(f => console.log('  + ' + f)); }
   if (mirror && stats.prunedList.length) { console.log('删除(仅mirror):'); stats.prunedList.forEach(f => console.log('  - ' + f)); }
   if (stats.errors.length) { console.log('错误:'); stats.errors.forEach(e => console.log('  ! ' + e)); }
+  if (stats.errors.some((error) => error.startsWith('project-'))) process.exitCode = 1;
   if (dryRun) console.log('\n[dry-run] 未实际写入，去掉 --dry-run 重新运行以执行。');
 }
 

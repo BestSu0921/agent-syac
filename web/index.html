@@ -518,7 +518,7 @@ html:not([data-theme="light"])::view-transition-new(root) { z-index: 1; }
       <div class="cmds">
         <div class="cmd active" data-cmd="all"><span class="code">sync</span> all <span class="desc">执行全部</span></div>
         <div class="cmd" data-cmd="links"><span class="code">sync</span> links <span class="desc">技能映射</span></div>
-        <div class="cmd" data-cmd="rules"><span class="code">sync</span> rules <span class="desc">规则注入</span></div>
+        <div class="cmd" data-cmd="rules"><span class="code">sync</span> rules <span class="desc">共享规则与技能调用</span></div>
         <div class="cmd" data-cmd="memory"><span class="code">sync</span> memory <span class="desc">记忆下发</span></div>
         <div class="cmd" data-cmd="mcp"><span class="code">sync</span> mcp <span class="desc">MCP 下发</span></div>
         <div class="cmd" data-cmd="adopt"><span class="code">sync</span> adopt <span class="desc">收编巡检</span></div>
@@ -626,7 +626,7 @@ function rulesOf(file) {
 }
 function pendingCount() {
   const links = (ST.conflicts || []).length + (ST.adoptCandidates || []).length;
-  return links + (ST.rules.actions || []).length + (ST.memory ? ST.memory.actions.length : 0);
+  return links + (ST.rules.actions || []).length + (ST.rules.errors || []).length + (ST.memory ? ST.memory.actions.length : 0);
 }
 function render() {
   if (!ST || ST.error) return;
@@ -635,7 +635,8 @@ function render() {
   const linkOk = per.reduce((n, a) => n + a.ok, 0) + pr.reduce((n, p) => n + p.ok, 0);
   const linkTotal = per.reduce((n, a) => n + a.total, 0) + pr.reduce((n, p) => n + p.total, 0);
   const rulesOk = ST.rules.ok || 0;
-  const rulesTotal = rulesOk + (ST.rules.actions || []).length;
+  const rulesErrors = (ST.rules.errors || []).length;
+  const rulesTotal = rulesOk + (ST.rules.actions || []).length + rulesErrors;
   const memOk = ST.memory ? ST.memory.ok : 0;
   const memTotal = memOk + (ST.memory ? ST.memory.actions.length : 0);
   const pending = pendingCount();
@@ -647,11 +648,11 @@ function render() {
   $('#healthBig').innerHTML = pending === 0
     ? `全部同步 ✓<em>链接 / 规则块 / 备份 无待处理项</em>`
     : `${per.filter((a) => a.ok === a.total).length}/${per.length} 已接入 · ${pending} 处待处理` +
-      `<em>${(ST.conflicts || []).length} 冲突 · ${(ST.adoptCandidates || []).length} 待收编 · ${ST.rules.actions.length} 规则块待注入</em>`;
+      `<em>${(ST.conflicts || []).length} 冲突 · ${(ST.adoptCandidates || []).length} 待收编 · ${ST.rules.actions.length} 项规则待同步${rulesErrors ? ' · ' + rulesErrors + ' 项规则异常' : ''}</em>`;
   $('#healthStats').innerHTML =
     `<div><span>技能源 </span><b class="ok">${ST.sourceCount}</b></div>` +
     `<div><span>链接 </span><b class="${linkOk === linkTotal ? 'ok' : 'warn'}">${linkOk}/${linkTotal}</b></div>` +
-    `<div><span>规则块 </span><b class="${rulesOk === rulesTotal ? 'ok' : 'warn'}">${rulesOk}/${rulesTotal}</b></div>` +
+    `<div><span>规则 </span><b class="${rulesOk === rulesTotal ? 'ok' : 'warn'}">${rulesOk}/${rulesTotal}</b></div>` +
     `<div><span>记忆块 </span><b class="${memOk === memTotal ? 'ok' : 'warn'}">${memOk}/${memTotal}</b></div>` +
     `<div><span>备份 </span><b class="${backupOk ? 'ok' : 'err'}">${ST.backup ? 'errors=' + ST.backup.errors : '—'}</b></div>`;
 
@@ -737,7 +738,7 @@ function friendlyLog(l) {
            (g('conflict') ? '，⚠ ' + g('conflict') + ' 处冲突待处理' : '') +
            (g('adopt') ? '，' + g('adopt') + ' 个新技能待收编' : '');
   } else if (rest.includes('sync rules')) {
-    text = '规则注入：' + g('ok') + ' 处一致' + (g('created') ? '，写入/修复 ' + g('created') + ' 处' : '');
+    text = '规则同步：' + g('ok') + ' 处一致' + (g('created') ? '，写入/修复 ' + g('created') + ' 处' : '');
   } else if (rest.includes('sync adopt')) {
     text = '技能收编：移入源 ' + g('created') + ' 个' + (g('adopt') ? '，发现 ' + g('adopt') + ' 个候选' : '');
   } else if (rest.includes('sync memory')) {
@@ -774,7 +775,9 @@ function renderSkills() {
   const listEl = $('#catList'), grid = $('#skillGrid');
   if (!grid || !listEl) return;
   const skills = ST.skills || [];
-  $('#skillNote').textContent = `// 源目录 ${skills.length} 个技能 · 悬浮卡片看完整描述`;
+  const registered = ST.projectSkills || [];
+  $('#skillNote').textContent = `// 全局 ${skills.length} 个技能 · 项目登记 ${registered.length} 个（不全局加载） · 悬浮卡片看完整描述`;
+  $('#skillNote').title = registered.map((p) => `${p.id}: ${p.dir} · 可读${p.present.length} · 缺失${p.missing.length} · 全局副本${p.globalDuplicates.length} · agent残留${p.agentCopies.length}`).join('\n');
   const q = ($('#skillSearch').value || '').trim().toLowerCase();
   const match = (s) => !q || (s.name + ' ' + (s.short || '') + ' ' + s.desc + ' ' + (s.cat || '')).toLowerCase().includes(q);
   const groups = new Map();

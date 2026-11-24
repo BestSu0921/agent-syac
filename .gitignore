@@ -3,6 +3,7 @@ backups/
 claudecode/
 codex/
 global-agents/
+project-skills/
 workbuddy/
 zcode/
 trae/
@@ -29,3 +30,7 @@ tauri-app/src-tauri/resources/
 *.log
 Thumbs.db
 .DS_Store
+
+# 软件清单与本机 agent 数据（个人环境信息，不开源）
+software/
+antigravity/
