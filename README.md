@@ -28,6 +28,8 @@ backupRoot（配置任意盘符目录）
 | Trae | 原生直读源 | 项目级 `.trae/rules/` | 需开启「启用 .agents 技能目录」；规则按项目清单注入，MCP 按模板下发 |
 | Antigravity（Google） | 引用模式 | ✓ `@` 引用 | `~/.gemini/GEMINI.md` 用 `@[名称](路径)` 直接引用 rules/memory 源文件，改源即时生效，无需同步命令 |
 
+`@` 引用只有 Gemini 系运行时会展开。ZCode 与 OpenCode 已实测（`AGENTS.md` 中插入 `@[探针](路径)` 后新开会话）：引用行原样进入上下文，正文不展开，因此这两家必须走标记块注入，不要改成引用。Claude Code 支持自己的 `@路径` 导入，但引用模式没有漂移检测和写前备份，默认仍用块注入。
+
 新增 agent：在 `sync.mjs` 顶部 `AGENTS` 矩阵加一行（junction 型给目录，直读型 `skills: null`）。`check` 会提示已安装但未纳入矩阵的 agent（如 Cursor）。
 
 Skill 目录采用 Anthropic `SKILL.md` 格式（Trae 等多家兼容）；规则/记忆用标记块幂等注入（`<!-- synced-rule:名 start … end -->`），重复运行零副作用。
